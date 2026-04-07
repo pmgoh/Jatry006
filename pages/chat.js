@@ -283,6 +283,58 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
 
   return (
     <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--night)' }}>
+      {/* 설정 말풍선 - position fixed로 stacking context 탈출 */}
+      {showSecureSettings && (
+        <div style={{
+          position: 'fixed', top: 58, right: 16,
+          width: 220, padding: '14px 16px',
+          background: 'var(--panel)',
+          border: '1px solid var(--border)',
+          borderRadius: 14,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(124,106,247,0.1)',
+          zIndex: 9999,
+        }}>
+          <div style={{
+            position: 'absolute', top: -5, right: 20,
+            width: 10, height: 10,
+            background: 'var(--panel)',
+            border: '1px solid var(--border)',
+            borderBottom: 'none', borderRight: 'none',
+            transform: 'rotate(45deg)',
+          }} />
+          <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-dim)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            보안 설정
+          </p>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>블러 강도</span>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{blurAmount}px</span>
+            </div>
+            <input type="range" min={4} max={24} value={blurAmount}
+              onChange={(e) => updateBlurAmount(Number(e.target.value))}
+              style={{ width: '100%', accentColor: '#7c6af7', cursor: 'pointer', height: 4 }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
+              <span style={{ fontSize: 10, color: 'var(--muted)' }}>약하게</span>
+              <span style={{ fontSize: 10, color: 'var(--muted)' }}>강하게</span>
+            </div>
+          </div>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>블러 속도</span>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{blurSpeed}ms</span>
+            </div>
+            <input type="range" min={100} max={1000} step={50} value={blurSpeed}
+              onChange={(e) => updateBlurSpeed(Number(e.target.value))}
+              style={{ width: '100%', accentColor: '#7c6af7', cursor: 'pointer', height: 4 }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
+              <span style={{ fontSize: 10, color: 'var(--muted)' }}>빠르게</span>
+              <span style={{ fontSize: 10, color: 'var(--muted)' }}>느리게</span>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 헤더 */}
       <div className="flex items-center gap-3 px-4 py-3.5 flex-shrink-0" style={{
         borderBottom: '1px solid var(--border)',
@@ -338,66 +390,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
             </svg>
           </button>
 
-          {/* 설정 말풍선 */}
-          {showSecureSettings && (
-            <div style={{
-              position: 'absolute', top: 'calc(100% + 10px)', right: 0,
-              width: 220, padding: '14px 16px',
-              background: 'var(--panel)',
-              border: '1px solid var(--border)',
-              borderRadius: 14,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(124,106,247,0.1)',
-              zIndex: 9999,
-              pointerEvents: 'auto',
-            }}>
-              {/* 말풍선 꼬리 */}
-              <div style={{
-                position: 'absolute', top: -5, right: 20,
-                width: 10, height: 10,
-                background: 'var(--panel)',
-                border: '1px solid var(--border)',
-                borderBottom: 'none', borderRight: 'none',
-                transform: 'rotate(45deg)',
-              }} />
-              <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-dim)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                보안 설정
-              </p>
-
-              {/* 블러 강도 */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>블러 강도</span>
-                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>{blurAmount}px</span>
-                </div>
-                <input type="range" min={4} max={24} value={blurAmount}
-                  onChange={(e) => updateBlurAmount(Number(e.target.value))}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  style={{ width: '100%', accentColor: '#7c6af7', cursor: 'pointer', height: 4 }}
-                />
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>약하게</span>
-                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>강하게</span>
-                </div>
-              </div>
-
-              {/* 블러 속도 */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>블러 속도</span>
-                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>{blurSpeed}ms</span>
-                </div>
-                <input type="range" min={100} max={1000} step={50} value={blurSpeed}
-                  onChange={(e) => updateBlurSpeed(Number(e.target.value))}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  style={{ width: '100%', accentColor: '#7c6af7', cursor: 'pointer', height: 4 }}
-                />
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>빠르게</span>
-                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>느리게</span>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* 설정 말풍선 - 헤더 stacking context 밖에서 렌더링 */}
         </div>
 
         {/* 닫기 버튼 */}
