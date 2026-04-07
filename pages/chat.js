@@ -241,6 +241,16 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
   const [sending, setSending] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+  const settingsRef = useRef(null)
+  const [secureMode, setSecureMode] = useState(false)
+  const [showSecureSettings, setShowSecureSettings] = useState(false)
+  const [isHoveringMessages, setIsHoveringMessages] = useState(false)
+  const [blurAmount, setBlurAmount] = useState(10)
+  const [blurSpeed, setBlurSpeed] = useState(300)
+
+  const toggleSecureMode = () => setSecureMode((v) => !v)
+  const updateBlurAmount = (val) => setBlurAmount(val)
+  const updateBlurSpeed = (val) => setBlurSpeed(val)
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => { if (activeUser) setTimeout(() => inputRef.current?.focus(), 100) }, [activeUser])
