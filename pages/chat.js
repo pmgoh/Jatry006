@@ -66,32 +66,45 @@ function ReadReceipt({ isRead }) {
 
 function AIMessageBubble({ msg, isFirst, isLast }) {
   const [visible, setVisible] = useState(false)
-  useEffect(() => { const t = setTimeout(() => setVisible(true), 40); return () => clearTimeout(t) }, [])
+  useEffect(() => { const t = setTimeout(() => setVisible(true), 30); return () => clearTimeout(t) }, [])
   return (
-    <div className={`flex items-end gap-2.5 ${isFirst ? 'mt-4' : 'mt-0.5'}`}
-      style={{ opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(4px)', transition: 'opacity 0.25s ease, transform 0.25s ease' }}>
-      <div style={{ width: 28, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
-        {isLast && <AIIcon size={28} />}
-      </div>
-      <div style={{ maxWidth: '70%' }}>
-        {isFirst && <p className="text-xs mb-1 ml-1" style={{ color: 'var(--muted)' }}>{msg.senderName}</p>}
-        <div style={{
-          padding: '10px 14px',
-          borderRadius: isLast ? '14px 14px 14px 4px' : '14px',
-          background: 'rgba(17,19,24,0.9)',
-          border: '1px solid rgba(124,106,247,0.18)',
-          boxShadow: '0 0 12px rgba(124,106,247,0.06), inset 0 0 20px rgba(124,106,247,0.02)',
-          fontSize: 14, lineHeight: 1.65, color: 'var(--text)',
-          wordBreak: 'break-word', whiteSpace: 'pre-wrap',
-        }}>
-          {msg.text}
+    <div
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'none' : 'translateY(6px)',
+        transition: 'opacity 0.3s ease, transform 0.3s ease',
+        marginTop: isFirst ? 20 : 2,
+        paddingTop: isFirst ? 16 : 0,
+        borderTop: isFirst ? '1px solid rgba(255,255,255,0.04)' : 'none',
+      }}
+    >
+      {isFirst && (
+        <div className="flex items-center gap-2.5 mb-3">
+          <AIIcon size={22} />
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-dim)', letterSpacing: '-0.01em' }}>
+            {msg.senderName}
+          </span>
         </div>
-        {isLast && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, paddingLeft: 4 }}>{formatTime(msg.timestamp)}</p>}
+      )}
+      <div style={{
+        paddingLeft: isFirst ? 0 : 34,
+        fontSize: 14,
+        lineHeight: 1.75,
+        color: 'var(--text)',
+        wordBreak: 'break-word',
+        whiteSpace: 'pre-wrap',
+        letterSpacing: '-0.01em',
+      }}>
+        {msg.text}
       </div>
+      {isLast && (
+        <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, paddingLeft: 34 }}>
+          {formatTime(msg.timestamp)}
+        </p>
+      )}
     </div>
   )
 }
-
 function MyMessageBubble({ msg, isFirst, isLast, otherLastRead }) {
   // 내 메시지 timestamp가 상대방 lastRead보다 이전이면 읽음
   const isRead = otherLastRead && msg.timestamp <= otherLastRead
@@ -296,7 +309,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
       </div>
 
       {/* 메시지 리스트 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-6 py-6">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <AIIcon size={36} />
