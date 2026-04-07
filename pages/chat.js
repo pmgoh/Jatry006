@@ -229,6 +229,9 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => { if (activeUser) setTimeout(() => inputRef.current?.focus(), 100) }, [activeUser])
+  const otherLastRead = lastRead?.[activeUser?.uid] || 0
+  if (!activeUser || !me) return null
+
 
   const handleSend = async () => {
     if (!input.trim() || !me || !activeUser || sending) return
@@ -252,7 +255,6 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
   }
 
   // 상대방의 lastRead (내 메시지가 읽혔는지 기준)
-  const otherLastRead = lastRead?.[activeUser?.uid] || 0
 
   return (
     <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--night)' }}>
