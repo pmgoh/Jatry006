@@ -1,8 +1,8 @@
 {
   "rules": {
     "users": {
+      ".read": "auth != null",
       "$uid": {
-        ".read": "auth != null",
         ".write": "auth != null && auth.uid === $uid"
       }
     },
@@ -12,6 +12,12 @@
         ".write": "auth != null && ($roomId.contains(auth.uid))",
         "messages": {
           ".indexOn": ["timestamp"]
+        },
+        "lastRead": {
+          "$uid": {
+            ".read": "auth != null && ($roomId.contains(auth.uid))",
+            ".write": "auth != null && auth.uid === $uid"
+          }
         }
       }
     }

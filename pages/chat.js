@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
-import { ref, onValue, set, push, update, onDisconnect } from 'firebase/database'
+import { ref, onValue, set, push, onDisconnect } from 'firebase/database'
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -29,7 +29,6 @@ function Avatar({ name, size = 36 }) {
   )
 }
 
-// AI 스타일 아이콘
 function AIIcon({ size = 28 }) {
   return (
     <div style={{
@@ -65,50 +64,37 @@ function ReadReceipt({ isRead }) {
   )
 }
 
-// AI 스타일 메시지 버블 (상대방)
 function AIMessageBubble({ msg, isFirst, isLast }) {
   const [visible, setVisible] = useState(false)
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 40)
-    return () => clearTimeout(t)
-  }, [])
-
+  useEffect(() => { const t = setTimeout(() => setVisible(true), 40); return () => clearTimeout(t) }, [])
   return (
     <div className={`flex items-end gap-2.5 ${isFirst ? 'mt-4' : 'mt-0.5'}`}
       style={{ opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(4px)', transition: 'opacity 0.25s ease, transform 0.25s ease' }}>
-      {/* AI 아이콘 — isFirst일 때만 */}
       <div style={{ width: 28, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
         {isLast && <AIIcon size={28} />}
       </div>
       <div style={{ maxWidth: '70%' }}>
-        {isFirst && (
-          <p className="text-xs mb-1 ml-1" style={{ color: 'var(--muted)' }}>{msg.senderName}</p>
-        )}
+        {isFirst && <p className="text-xs mb-1 ml-1" style={{ color: 'var(--muted)' }}>{msg.senderName}</p>}
         <div style={{
           padding: '10px 14px',
-          borderRadius: isLast ? '14px 14px 14px 4px' : '14px 14px 14px 14px',
+          borderRadius: isLast ? '14px 14px 14px 4px' : '14px',
           background: 'rgba(17,19,24,0.9)',
           border: '1px solid rgba(124,106,247,0.18)',
           boxShadow: '0 0 12px rgba(124,106,247,0.06), inset 0 0 20px rgba(124,106,247,0.02)',
-          fontSize: 14, lineHeight: 1.65,
-          color: 'var(--text)',
+          fontSize: 14, lineHeight: 1.65, color: 'var(--text)',
           wordBreak: 'break-word', whiteSpace: 'pre-wrap',
         }}>
           {msg.text}
         </div>
-        {isLast && (
-          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, paddingLeft: 4 }}>
-            {formatTime(msg.timestamp)}
-          </p>
-        )}
+        {isLast && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, paddingLeft: 4 }}>{formatTime(msg.timestamp)}</p>}
       </div>
     </div>
   )
 }
 
-// 내 메시지 버블
-function MyMessageBubble({ msg, isFirst, isLast }) {
-  const isRead = !!msg.readAt
+function MyMessageBubble({ msg, isFirst, isLast, otherLastRead }) {
+  // 내 메시지 timestamp가 상대방 lastRead보다 이전이면 읽음
+  const isRead = otherLastRead && msg.timestamp <= otherLastRead
   return (
     <div className={`flex justify-end ${isFirst ? 'mt-4' : 'mt-0.5'}`}>
       <div style={{ maxWidth: '70%' }}>
@@ -117,17 +103,13 @@ function MyMessageBubble({ msg, isFirst, isLast }) {
           borderRadius: isLast ? '14px 14px 4px 14px' : '14px',
           background: 'linear-gradient(135deg, rgba(124,106,247,0.22), rgba(79,163,247,0.18))',
           border: '1px solid rgba(124,106,247,0.28)',
-          fontSize: 14, lineHeight: 1.55,
-          color: 'var(--text)',
+          fontSize: 14, lineHeight: 1.55, color: 'var(--text)',
           wordBreak: 'break-word', whiteSpace: 'pre-wrap',
         }}>
           {msg.text}
         </div>
         {isLast && (
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-            marginTop: 3, paddingRight: 4, gap: 2,
-          }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 3, paddingRight: 4, gap: 2 }}>
             <span style={{ fontSize: 11, color: 'var(--muted)' }}>{formatTime(msg.timestamp)}</span>
             <ReadReceipt isRead={isRead} />
           </div>
@@ -190,11 +172,10 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
                   <div style={{ position: 'absolute', bottom: -1, right: -1, width: 9, height: 9, borderRadius: '50%', background: '#4ade80', border: '2px solid var(--surface)', boxShadow: '0 0 5px rgba(74,222,128,0.5)' }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate leading-none mb-0.5"
-                    style={{ color: 'var(--text)', fontWeight: badge > 0 ? 600 : 500 }}>
+                  <p className="text-sm truncate leading-none mb-0.5" style={{ color: 'var(--text)', fontWeight: badge > 0 ? 600 : 500 }}>
                     {user.username}
                   </p>
-                  <p className="text-xs truncate" style={{ color: badge > 0 ? 'rgba(124,106,247,0.8)' : 'var(--muted)', fontWeight: badge > 0 ? 500 : 400 }}>
+                  <p className="text-xs truncate" style={{ color: badge > 0 ? 'rgba(124,106,247,0.9)' : 'var(--muted)', fontWeight: badge > 0 ? 500 : 400 }}>
                     {badge > 0 ? `${badge}개의 새 메시지` : '온라인'}
                   </p>
                 </div>
@@ -231,8 +212,8 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
 
 function EmptyState() {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center" style={{ background: 'var(--night)' }}>
-      <div style={{ position: 'absolute', top: '30%', left: '50%', transform: 'translate(-50%,-50%)', width: 400, height: 400, background: 'radial-gradient(circle, rgba(124,106,247,0.04) 0%, transparent 70%)', pointerEvents: 'none' }} />
+    <div className="flex-1 flex flex-col items-center justify-center relative" style={{ background: 'var(--night)' }}>
+      <div style={{ position: 'absolute', top: '40%', left: '50%', transform: 'translate(-50%,-50%)', width: 400, height: 400, background: 'radial-gradient(circle, rgba(124,106,247,0.04) 0%, transparent 70%)', pointerEvents: 'none' }} />
       <AIIcon size={44} />
       <p className="text-sm font-medium mt-4 mb-1" style={{ color: 'var(--text-dim)' }}>대화 상대를 선택하세요</p>
       <p className="text-xs" style={{ color: 'var(--muted)' }}>왼쪽 목록에서 유저를 클릭하면 채팅이 시작돼요</p>
@@ -240,7 +221,7 @@ function EmptyState() {
   )
 }
 
-function ChatPanel({ me, activeUser, messages, onBack, onClose }) {
+function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const bottomRef = useRef(null)
@@ -258,7 +239,7 @@ function ChatPanel({ me, activeUser, messages, onBack, onClose }) {
     try {
       await push(ref(db, `rooms/${roomId}/messages`), {
         sender: me.uid, senderName: me.displayName,
-        text, timestamp: Date.now(), readAt: null,
+        text, timestamp: Date.now(),
       })
     } finally {
       setSending(false)
@@ -269,6 +250,9 @@ function ChatPanel({ me, activeUser, messages, onBack, onClose }) {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
+
+  // 상대방의 lastRead (내 메시지가 읽혔는지 기준)
+  const otherLastRead = lastRead?.[activeUser?.uid] || 0
 
   return (
     <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--night)' }}>
@@ -286,9 +270,7 @@ function ChatPanel({ me, activeUser, messages, onBack, onClose }) {
             </svg>
           </button>
         )}
-        <div className="relative">
-          <AIIcon size={34} />
-        </div>
+        <AIIcon size={34} />
         <div className="flex-1">
           <p className="text-sm font-medium leading-none mb-0.5" style={{ color: 'var(--text)' }}>{activeUser.username}</p>
           <div className="flex items-center gap-1.5">
@@ -296,9 +278,13 @@ function ChatPanel({ me, activeUser, messages, onBack, onClose }) {
             <p className="text-xs" style={{ color: '#4ade80' }}>온라인</p>
           </div>
         </div>
+        {/* 닫기 버튼 — 데스크탑 전용 */}
         {onClose && (
-          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors hidden md:flex items-center justify-center" style={{ color: 'var(--muted)' }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = 'var(--text-dim)' }}
+          <button onClick={onClose}
+            className="p-1.5 rounded-lg transition-colors"
+            style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="채팅 닫기"
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = 'var(--text)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12"/>
@@ -307,7 +293,7 @@ function ChatPanel({ me, activeUser, messages, onBack, onClose }) {
         )}
       </div>
 
-      {/* 메시지 */}
+      {/* 메시지 리스트 */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
@@ -321,9 +307,8 @@ function ChatPanel({ me, activeUser, messages, onBack, onClose }) {
           const prev = messages[i - 1], next = messages[i + 1]
           const isFirst = !prev || prev.sender !== msg.sender
           const isLast = !next || next.sender !== msg.sender
-
           return isMe
-            ? <MyMessageBubble key={msg.id} msg={msg} isFirst={isFirst} isLast={isLast} />
+            ? <MyMessageBubble key={msg.id} msg={msg} isFirst={isFirst} isLast={isLast} otherLastRead={otherLastRead} />
             : <AIMessageBubble key={msg.id} msg={msg} isFirst={isFirst} isLast={isLast} />
         })}
         <div ref={bottomRef} />
@@ -376,11 +361,14 @@ export default function Chat() {
   const [activeUser, setActiveUser] = useState(null)
   const [messages, setMessages] = useState([])
   const [unread, setUnread] = useState({})
+  const [lastRead, setLastRead] = useState({}) // { [otherUid]: timestamp }
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [mobileView, setMobileView] = useState('list')
   const activeUserRef = useRef(null)
+  const meRef = useRef(null)
 
   useEffect(() => { activeUserRef.current = activeUser }, [activeUser])
+  useEffect(() => { meRef.current = me }, [me])
 
   useEffect(() => {
     let unsubUsers = null
@@ -400,9 +388,15 @@ export default function Chat() {
     return () => { unsub(); if (unsubUsers) unsubUsers() }
   }, [])
 
+  // 메시지 리스너
   useEffect(() => {
     if (!me || !activeUser) return
     const roomId = [me.uid, activeUser.uid].sort().join('_')
+
+    // 내가 읽은 시간 기록
+    set(ref(db, `rooms/${roomId}/lastRead/${me.uid}`), Date.now())
+    setUnread((prev) => ({ ...prev, [activeUser.uid]: 0 }))
+
     const unsub = onValue(ref(db, `rooms/${roomId}/messages`), (snap) => {
       const data = snap.val()
       if (!data) { setMessages([]); return }
@@ -411,35 +405,44 @@ export default function Chat() {
         .filter((m) => m.timestamp && isSameDay(m.timestamp))
         .sort((a, b) => a.timestamp - b.timestamp)
       setMessages(all)
+      // 새 메시지 올 때마다 lastRead 갱신
+      set(ref(db, `rooms/${roomId}/lastRead/${me.uid}`), Date.now())
       setUnread((prev) => ({ ...prev, [activeUser.uid]: 0 }))
-      const updates = {}
-      Object.entries(data).forEach(([id, m]) => {
-        if (m.sender !== me.uid && !m.readAt && m.timestamp && isSameDay(m.timestamp)) {
-          updates[`rooms/${roomId}/messages/${id}/readAt`] = Date.now()
-        }
-      })
-      if (Object.keys(updates).length > 0) update(ref(db), updates)
     })
-    return () => unsub()
+
+    // 상대방 lastRead 리스너 (읽음 표시용)
+    const unsubLastRead = onValue(ref(db, `rooms/${roomId}/lastRead/${activeUser.uid}`), (snap) => {
+      const ts = snap.val()
+      if (ts) setLastRead((prev) => ({ ...prev, [activeUser.uid]: ts }))
+    })
+
+    return () => { unsub(); unsubLastRead() }
   }, [me, activeUser])
 
+  // 전체 미읽음 카운트 — lastRead 기반
   useEffect(() => {
     if (!me || users.length === 0) return
     const unsubs = []
     users.forEach((u) => {
       if (u.uid === me.uid) return
       const roomId = [me.uid, u.uid].sort().join('_')
-      const unsub = onValue(ref(db, `rooms/${roomId}/messages`), (snap) => {
+
+      // 내 lastRead 타임스탬프 가져오기
+      let myLastRead = 0
+      const unsubLR = onValue(ref(db, `rooms/${roomId}/lastRead/${me.uid}`), (snap) => {
+        myLastRead = snap.val() || 0
+      })
+
+      const unsubMsgs = onValue(ref(db, `rooms/${roomId}/messages`), (snap) => {
         const data = snap.val()
         if (!data) { setUnread((prev) => ({ ...prev, [u.uid]: 0 })); return }
+        if (activeUserRef.current?.uid === u.uid) return
         const count = Object.values(data).filter(
-          (m) => m.sender !== me.uid && !m.readAt && m.timestamp && isSameDay(m.timestamp)
+          (m) => m.sender !== me.uid && m.timestamp > myLastRead && isSameDay(m.timestamp)
         ).length
-        if (activeUserRef.current?.uid !== u.uid) {
-          setUnread((prev) => ({ ...prev, [u.uid]: count }))
-        }
+        setUnread((prev) => ({ ...prev, [u.uid]: count }))
       })
-      unsubs.push(unsub)
+      unsubs.push(unsubLR, unsubMsgs)
     })
     return () => unsubs.forEach((u) => u())
   }, [me, users])
@@ -449,6 +452,11 @@ export default function Chat() {
     setMessages([])
     setUnread((prev) => ({ ...prev, [user.uid]: 0 }))
     setMobileView('chat')
+  }
+
+  const handleCloseChat = () => {
+    setActiveUser(null)
+    setMessages([])
   }
 
   const handleLogout = async () => {
@@ -465,7 +473,7 @@ export default function Chat() {
             onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers} />
         </div>
         {activeUser
-          ? <ChatPanel me={me} activeUser={activeUser} messages={messages} onClose={() => { setActiveUser(null); setMessages([]) }} />
+          ? <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead} onClose={handleCloseChat} />
           : <EmptyState />
         }
       </div>
@@ -473,7 +481,7 @@ export default function Chat() {
         {mobileView === 'list'
           ? <Sidebar me={me} users={users} activeUser={activeUser} unread={unread}
               onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers} />
-          : <ChatPanel me={me} activeUser={activeUser} messages={messages}
+          : <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead}
               onBack={() => { setMobileView('list'); setActiveUser(null) }} />
         }
       </div>
