@@ -370,6 +370,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
                 </div>
                 <input type="range" min={4} max={24} value={blurAmount}
                   onChange={(e) => updateBlurAmount(Number(e.target.value))}
+                  onMouseDown={(e) => e.stopPropagation()}
                   style={{ width: '100%', accentColor: '#7c6af7', cursor: 'pointer', height: 4 }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
@@ -386,6 +387,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
                 </div>
                 <input type="range" min={100} max={1000} step={50} value={blurSpeed}
                   onChange={(e) => updateBlurSpeed(Number(e.target.value))}
+                  onMouseDown={(e) => e.stopPropagation()}
                   style={{ width: '100%', accentColor: '#7c6af7', cursor: 'pointer', height: 4 }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
