@@ -68,37 +68,36 @@ function AIMessageBubble({ msg, isFirst, isLast }) {
   const [visible, setVisible] = useState(false)
   useEffect(() => { const t = setTimeout(() => setVisible(true), 30); return () => clearTimeout(t) }, [])
   return (
-    <div
-      style={{
-        opacity: visible ? 1 : 0,
-        transform: visible ? 'none' : 'translateY(6px)',
-        transition: 'opacity 0.3s ease, transform 0.3s ease',
-        marginTop: isFirst ? 20 : 2,
-        paddingTop: isFirst ? 16 : 0,
-        borderTop: isFirst ? '1px solid rgba(255,255,255,0.04)' : 'none',
-      }}
-    >
+    <div style={{
+      opacity: visible ? 1 : 0,
+      transform: visible ? 'none' : 'translateY(5px)',
+      transition: 'opacity 0.28s ease, transform 0.28s ease',
+      marginTop: isFirst ? 28 : 4,
+    }}>
+      {/* 발신자 헤더 */}
       {isFirst && (
-        <div className="flex items-center gap-2.5 mb-3">
-          <AIIcon size={22} />
-          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-dim)', letterSpacing: '-0.01em' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <AIIcon size={24} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.01em' }}>
             {msg.senderName}
           </span>
         </div>
       )}
+      {/* 텍스트 — 아이콘 너비(24) + gap(10) = 34px 들여쓰기 */}
       <div style={{
-        paddingLeft: isFirst ? 0 : 34,
-        fontSize: 14,
-        lineHeight: 1.75,
+        paddingLeft: 34,
+        fontSize: 15,
+        lineHeight: 1.7,
         color: 'var(--text)',
         wordBreak: 'break-word',
         whiteSpace: 'pre-wrap',
-        letterSpacing: '-0.01em',
+        letterSpacing: '-0.005em',
+        fontWeight: 400,
       }}>
         {msg.text}
       </div>
       {isLast && (
-        <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, paddingLeft: 34 }}>
+        <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, paddingLeft: 34, letterSpacing: '0.01em' }}>
           {formatTime(msg.timestamp)}
         </p>
       )}
@@ -106,24 +105,27 @@ function AIMessageBubble({ msg, isFirst, isLast }) {
   )
 }
 function MyMessageBubble({ msg, isFirst, isLast, otherLastRead }) {
-  // 내 메시지 timestamp가 상대방 lastRead보다 이전이면 읽음
   const isRead = otherLastRead && msg.timestamp <= otherLastRead
   return (
-    <div className={`flex justify-end ${isFirst ? 'mt-4' : 'mt-0.5'}`}>
-      <div style={{ maxWidth: '70%' }}>
+    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: isFirst ? 28 : 4 }}>
+      <div style={{ maxWidth: '62%' }}>
         <div style={{
-          padding: '8px 13px',
-          borderRadius: isLast ? '14px 14px 4px 14px' : '14px',
-          background: 'linear-gradient(135deg, rgba(124,106,247,0.22), rgba(79,163,247,0.18))',
-          border: '1px solid rgba(124,106,247,0.28)',
-          fontSize: 14, lineHeight: 1.55, color: 'var(--text)',
-          wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+          padding: '10px 15px',
+          borderRadius: isLast ? '16px 16px 4px 16px' : '16px',
+          background: 'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(79,163,247,0.16))',
+          border: '1px solid rgba(124,106,247,0.25)',
+          fontSize: 15,
+          lineHeight: 1.6,
+          color: 'var(--text)',
+          wordBreak: 'break-word',
+          whiteSpace: 'pre-wrap',
+          letterSpacing: '-0.005em',
         }}>
           {msg.text}
         </div>
         {isLast && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 3, paddingRight: 4, gap: 2 }}>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{formatTime(msg.timestamp)}</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, paddingRight: 2, gap: 3 }}>
+            <span style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '0.01em' }}>{formatTime(msg.timestamp)}</span>
             <ReadReceipt isRead={isRead} />
           </div>
         )}
@@ -309,28 +311,31 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
       </div>
 
       {/* 메시지 리스트 */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <AIIcon size={36} />
-            <p className="text-sm mt-3 mb-1" style={{ color: 'var(--text-dim)' }}>{activeUser.username}와의 대화</p>
-            <p className="text-xs" style={{ color: 'var(--muted)' }}>첫 메시지를 보내보세요</p>
-          </div>
-        )}
-        {messages.map((msg, i) => {
-          const isMe = msg.sender === me?.uid
-          const prev = messages[i - 1], next = messages[i + 1]
-          const isFirst = !prev || prev.sender !== msg.sender
-          const isLast = !next || next.sender !== msg.sender
-          return isMe
-            ? <MyMessageBubble key={msg.id} msg={msg} isFirst={isFirst} isLast={isLast} otherLastRead={otherLastRead} />
-            : <AIMessageBubble key={msg.id} msg={msg} isFirst={isFirst} isLast={isLast} />
-        })}
-        <div ref={bottomRef} />
+      <div className="flex-1 overflow-y-auto py-6">
+        <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 24px' }}>
+          {messages.length === 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, textAlign: 'center' }}>
+              <AIIcon size={36} />
+              <p style={{ fontSize: 14, color: 'var(--text-dim)', marginTop: 12, marginBottom: 4 }}>{activeUser.username}와의 대화</p>
+              <p style={{ fontSize: 12, color: 'var(--muted)' }}>첫 메시지를 보내보세요</p>
+            </div>
+          )}
+          {messages.map((msg, i) => {
+            const isMe = msg.sender === me?.uid
+            const prev = messages[i - 1], next = messages[i + 1]
+            const isFirst = !prev || prev.sender !== msg.sender
+            const isLast = !next || next.sender !== msg.sender
+            return isMe
+              ? <MyMessageBubble key={msg.id} msg={msg} isFirst={isFirst} isLast={isLast} otherLastRead={otherLastRead} />
+              : <AIMessageBubble key={msg.id} msg={msg} isFirst={isFirst} isLast={isLast} />
+          })}
+          <div ref={bottomRef} />
+        </div>
       </div>
 
       {/* 입력창 */}
       <div className="px-4 pb-4 pt-2 flex-shrink-0">
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <div className="glow-border flex items-end gap-2.5 px-4 py-3 rounded-2xl"
           style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}>
           <div className="flex-shrink-0 pb-0.5">
@@ -364,6 +369,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
         <p className="text-center mt-1.5 hidden md:block" style={{ color: 'var(--muted)', fontSize: 11 }}>
           Enter 전송 · Shift+Enter 줄바꿈
         </p>
+        </div>
       </div>
     </div>
   )
