@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
-import { ref, onValue, set, push, onDisconnect } from 'firebase/database'
+import { ref, onValue, set, push, update, onDisconnect } from 'firebase/database'
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -29,49 +29,142 @@ function Avatar({ name, size = 36 }) {
   )
 }
 
-// 사이드바 유저 목록 컴포넌트
+// AI 스타일 아이콘
+function AIIcon({ size = 28 }) {
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: size * 0.3, flexShrink: 0,
+      background: 'linear-gradient(135deg, #1e1b3a, #1a2540)',
+      border: '1px solid rgba(124,106,247,0.3)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 0 8px rgba(124,106,247,0.2)',
+    }}>
+      <svg width={size * 0.5} height={size * 0.5} viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="3" stroke="#7c6af7" strokeWidth="1.2"/>
+        <path d="M8 1v2M8 13v2M1 8h2M13 8h2" stroke="#7c6af7" strokeWidth="1.2" strokeLinecap="round"/>
+        <path d="M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42" stroke="#4fa3f7" strokeWidth="1" strokeLinecap="round" opacity="0.6"/>
+      </svg>
+    </div>
+  )
+}
+
+function ReadReceipt({ isRead }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 3 }}>
+      {isRead ? (
+        <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+          <path d="M1 5l3 3 5-7" stroke="#7c6af7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M5 5l3 3 5-7" stroke="#7c6af7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ) : (
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M1 5l3 3 5-6" stroke="var(--muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      )}
+    </span>
+  )
+}
+
+// AI 스타일 메시지 버블 (상대방)
+function AIMessageBubble({ msg, isFirst, isLast }) {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 40)
+    return () => clearTimeout(t)
+  }, [])
+
+  return (
+    <div className={`flex items-end gap-2.5 ${isFirst ? 'mt-4' : 'mt-0.5'}`}
+      style={{ opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(4px)', transition: 'opacity 0.25s ease, transform 0.25s ease' }}>
+      {/* AI 아이콘 — isFirst일 때만 */}
+      <div style={{ width: 28, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
+        {isLast && <AIIcon size={28} />}
+      </div>
+      <div style={{ maxWidth: '70%' }}>
+        {isFirst && (
+          <p className="text-xs mb-1 ml-1" style={{ color: 'var(--muted)' }}>{msg.senderName}</p>
+        )}
+        <div style={{
+          padding: '10px 14px',
+          borderRadius: isLast ? '14px 14px 14px 4px' : '14px 14px 14px 14px',
+          background: 'rgba(17,19,24,0.9)',
+          border: '1px solid rgba(124,106,247,0.18)',
+          boxShadow: '0 0 12px rgba(124,106,247,0.06), inset 0 0 20px rgba(124,106,247,0.02)',
+          fontSize: 14, lineHeight: 1.65,
+          color: 'var(--text)',
+          wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+        }}>
+          {msg.text}
+        </div>
+        {isLast && (
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, paddingLeft: 4 }}>
+            {formatTime(msg.timestamp)}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// 내 메시지 버블
+function MyMessageBubble({ msg, isFirst, isLast }) {
+  const isRead = !!msg.readAt
+  return (
+    <div className={`flex justify-end ${isFirst ? 'mt-4' : 'mt-0.5'}`}>
+      <div style={{ maxWidth: '70%' }}>
+        <div style={{
+          padding: '8px 13px',
+          borderRadius: isLast ? '14px 14px 4px 14px' : '14px',
+          background: 'linear-gradient(135deg, rgba(124,106,247,0.22), rgba(79,163,247,0.18))',
+          border: '1px solid rgba(124,106,247,0.28)',
+          fontSize: 14, lineHeight: 1.55,
+          color: 'var(--text)',
+          wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+        }}>
+          {msg.text}
+        </div>
+        {isLast && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+            marginTop: 3, paddingRight: 4, gap: 2,
+          }}>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{formatTime(msg.timestamp)}</span>
+            <ReadReceipt isRead={isRead} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers }) {
   const otherUsers = users.filter((u) => u.uid !== me?.uid)
   const meUser = users.find((u) => u.uid === me?.uid)
 
   return (
-    <aside className="flex flex-col h-full" style={{
-      background: 'var(--surface)',
-      borderRight: '1px solid var(--border)',
-    }}>
-      {/* 헤더 */}
+    <aside className="flex flex-col h-full" style={{ background: 'var(--surface)', borderRight: '1px solid var(--border)' }}>
       <div className="flex items-center gap-2.5 px-4 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
-        <div style={{
-          width: 26, height: 26, borderRadius: 7,
-          background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
+        <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" fill="white"/>
           </svg>
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold leading-none" style={{ color: 'var(--text)' }}>Jatry 메신저</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)', fontSize: 10 }}>AI 프로젝트 06번째</p>
+          <p className="mt-0.5" style={{ color: 'var(--muted)', fontSize: 10 }}>AI 프로젝트 06번째</p>
         </div>
       </div>
 
-      {/* 섹션 라벨 */}
       <div className="px-4 pt-4 pb-2 flex-shrink-0">
         <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>
           접속 중 {otherUsers.length > 0 ? `· ${otherUsers.length}명` : ''}
         </p>
       </div>
 
-      {/* 유저 목록 */}
       <div className="flex-1 overflow-y-auto px-2 pb-2">
         {loadingUsers ? (
           <div className="flex justify-center py-8">
-            <div style={{
-              width: 20, height: 20, borderRadius: '50%',
-              border: '2px solid var(--border)', borderTopColor: '#7c6af7',
-              animation: 'spin 0.8s linear infinite',
-            }} />
+            <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--border)', borderTopColor: '#7c6af7', animation: 'spin 0.8s linear infinite' }} />
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
         ) : otherUsers.length === 0 ? (
@@ -94,27 +187,19 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
               >
                 <div className="relative">
                   <Avatar name={user.username} size={34} />
-                  <div style={{
-                    position: 'absolute', bottom: -1, right: -1,
-                    width: 9, height: 9, borderRadius: '50%',
-                    background: '#4ade80', border: '2px solid var(--surface)',
-                    boxShadow: '0 0 5px rgba(74,222,128,0.5)',
-                  }} />
+                  <div style={{ position: 'absolute', bottom: -1, right: -1, width: 9, height: 9, borderRadius: '50%', background: '#4ade80', border: '2px solid var(--surface)', boxShadow: '0 0 5px rgba(74,222,128,0.5)' }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate leading-none mb-0.5"
-                    style={{ color: isActive ? 'var(--text)' : 'var(--text-dim)' }}>
+                  <p className="text-sm truncate leading-none mb-0.5"
+                    style={{ color: 'var(--text)', fontWeight: badge > 0 ? 600 : 500 }}>
                     {user.username}
                   </p>
-                  <p className="text-xs truncate" style={{ color: 'var(--muted)' }}>온라인</p>
+                  <p className="text-xs truncate" style={{ color: badge > 0 ? 'rgba(124,106,247,0.8)' : 'var(--muted)', fontWeight: badge > 0 ? 500 : 400 }}>
+                    {badge > 0 ? `${badge}개의 새 메시지` : '온라인'}
+                  </p>
                 </div>
                 {badge > 0 && (
-                  <div style={{
-                    minWidth: 18, height: 18, borderRadius: 9, padding: '0 5px',
-                    background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 700, color: 'white',
-                  }}>
+                  <div style={{ minWidth: 18, height: 18, borderRadius: 9, padding: '0 5px', background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white' }}>
                     {badge > 9 ? '9+' : badge}
                   </div>
                 )}
@@ -124,7 +209,6 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
         )}
       </div>
 
-      {/* 내 프로필 하단 */}
       {meUser && (
         <div className="flex items-center gap-2.5 px-3 py-3 flex-shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
           <Avatar name={meUser.username} size={30} />
@@ -132,12 +216,9 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
             <p className="text-xs font-medium truncate" style={{ color: 'var(--text)' }}>{meUser.username}</p>
             <p className="text-xs" style={{ color: 'var(--muted)' }}>나</p>
           </div>
-          <button onClick={onLogout}
-            className="p-1.5 rounded-lg transition-colors duration-150"
-            style={{ color: 'var(--muted)' }} title="로그아웃"
+          <button onClick={onLogout} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--muted)' }}
             onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.background = 'rgba(248,113,113,0.08)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}
-          >
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
             </svg>
@@ -148,20 +229,25 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
   )
 }
 
-// 채팅 패널
-function ChatPanel({ me, activeUser, messages, onBack }) {
+function EmptyState() {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center" style={{ background: 'var(--night)' }}>
+      <div style={{ position: 'absolute', top: '30%', left: '50%', transform: 'translate(-50%,-50%)', width: 400, height: 400, background: 'radial-gradient(circle, rgba(124,106,247,0.04) 0%, transparent 70%)', pointerEvents: 'none' }} />
+      <AIIcon size={44} />
+      <p className="text-sm font-medium mt-4 mb-1" style={{ color: 'var(--text-dim)' }}>대화 상대를 선택하세요</p>
+      <p className="text-xs" style={{ color: 'var(--muted)' }}>왼쪽 목록에서 유저를 클릭하면 채팅이 시작돼요</p>
+    </div>
+  )
+}
+
+function ChatPanel({ me, activeUser, messages, onBack, onClose }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  useEffect(() => {
-    if (activeUser) setTimeout(() => inputRef.current?.focus(), 100)
-  }, [activeUser])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => { if (activeUser) setTimeout(() => inputRef.current?.focus(), 100) }, [activeUser])
 
   const handleSend = async () => {
     if (!input.trim() || !me || !activeUser || sending) return
@@ -172,7 +258,7 @@ function ChatPanel({ me, activeUser, messages, onBack }) {
     try {
       await push(ref(db, `rooms/${roomId}/messages`), {
         sender: me.uid, senderName: me.displayName,
-        text, timestamp: Date.now(),
+        text, timestamp: Date.now(), readAt: null,
       })
     } finally {
       setSending(false)
@@ -184,65 +270,50 @@ function ChatPanel({ me, activeUser, messages, onBack }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
-  if (!activeUser) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center" style={{ background: 'var(--night)' }}>
-        <div style={{
-          width: 52, height: 52, borderRadius: 14, marginBottom: 16,
-          background: 'var(--panel)', border: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--muted)' }}>
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-          </svg>
-        </div>
-        <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-dim)' }}>대화 상대를 선택하세요</p>
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>왼쪽 목록에서 유저를 클릭하면 채팅이 시작돼요</p>
-      </div>
-    )
-  }
-
   return (
     <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--night)' }}>
-      {/* 채팅 헤더 */}
+      {/* 헤더 */}
       <div className="flex items-center gap-3 px-4 py-3.5 flex-shrink-0" style={{
         borderBottom: '1px solid var(--border)',
-        background: 'rgba(10,11,15,0.8)', backdropFilter: 'blur(16px)',
+        background: 'rgba(10,11,15,0.85)', backdropFilter: 'blur(16px)',
       }}>
-        {/* 모바일 뒤로가기 */}
         {onBack && (
-          <button onClick={onBack}
-            className="p-1.5 rounded-lg transition-colors md:hidden"
-            style={{ color: 'var(--text-dim)' }}
+          <button onClick={onBack} className="p-1.5 rounded-lg transition-colors md:hidden" style={{ color: 'var(--text-dim)' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--panel)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M15 18l-6-6 6-6"/>
             </svg>
           </button>
         )}
         <div className="relative">
-          <Avatar name={activeUser.username} size={34} />
-          <div style={{
-            position: 'absolute', bottom: -1, right: -1,
-            width: 9, height: 9, borderRadius: '50%',
-            background: '#4ade80', border: '2px solid var(--night)',
-            boxShadow: '0 0 5px rgba(74,222,128,0.5)',
-          }} />
+          <AIIcon size={34} />
         </div>
-        <div>
+        <div className="flex-1">
           <p className="text-sm font-medium leading-none mb-0.5" style={{ color: 'var(--text)' }}>{activeUser.username}</p>
-          <p className="text-xs" style={{ color: '#4ade80' }}>온라인</p>
+          <div className="flex items-center gap-1.5">
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 4px rgba(74,222,128,0.6)' }} />
+            <p className="text-xs" style={{ color: '#4ade80' }}>온라인</p>
+          </div>
         </div>
+        {onClose && (
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors hidden md:flex items-center justify-center" style={{ color: 'var(--muted)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = 'var(--text-dim)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* 메시지 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-0.5">
+      <div className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <p className="text-sm" style={{ color: 'var(--text-dim)' }}>{activeUser.username}와의 대화</p>
-            <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>첫 메시지를 보내보세요</p>
+            <AIIcon size={36} />
+            <p className="text-sm mt-3 mb-1" style={{ color: 'var(--text-dim)' }}>{activeUser.username}와의 대화</p>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>첫 메시지를 보내보세요</p>
           </div>
         )}
         {messages.map((msg, i) => {
@@ -250,31 +321,10 @@ function ChatPanel({ me, activeUser, messages, onBack }) {
           const prev = messages[i - 1], next = messages[i + 1]
           const isFirst = !prev || prev.sender !== msg.sender
           const isLast = !next || next.sender !== msg.sender
-          return (
-            <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${isFirst ? 'mt-3' : 'mt-0.5'}`}>
-              <div style={{ maxWidth: '70%' }}>
-                <div className={isMe ? 'msg-bubble-me' : 'msg-bubble-other'} style={{
-                  padding: '8px 13px',
-                  borderRadius: isMe
-                    ? `14px 14px ${isLast ? '4px' : '14px'} 14px`
-                    : `14px 14px 14px ${isLast ? '4px' : '14px'}`,
-                  fontSize: 14, lineHeight: 1.55, color: 'var(--text)',
-                  wordBreak: 'break-word', whiteSpace: 'pre-wrap',
-                }}>
-                  {msg.text}
-                </div>
-                {isLast && (
-                  <p style={{
-                    fontSize: 11, color: 'var(--muted)', marginTop: 3,
-                    textAlign: isMe ? 'right' : 'left',
-                    paddingLeft: isMe ? 0 : 4, paddingRight: isMe ? 4 : 0,
-                  }}>
-                    {formatTime(msg.timestamp)}
-                  </p>
-                )}
-              </div>
-            </div>
-          )
+
+          return isMe
+            ? <MyMessageBubble key={msg.id} msg={msg} isFirst={isFirst} isLast={isLast} />
+            : <AIMessageBubble key={msg.id} msg={msg} isFirst={isFirst} isLast={isLast} />
         })}
         <div ref={bottomRef} />
       </div>
@@ -287,8 +337,7 @@ function ChatPanel({ me, activeUser, messages, onBack }) {
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--muted)' }}>
               <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" stroke="currentColor" strokeWidth="1.5"/>
               <path d="M8 13s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              <circle cx="9" cy="9.5" r="1" fill="currentColor"/>
-              <circle cx="15" cy="9.5" r="1" fill="currentColor"/>
+              <circle cx="9" cy="9.5" r="1" fill="currentColor"/><circle cx="15" cy="9.5" r="1" fill="currentColor"/>
             </svg>
           </div>
           <textarea ref={inputRef} value={input}
@@ -305,11 +354,7 @@ function ChatPanel({ me, activeUser, messages, onBack }) {
           />
           <button onClick={handleSend} disabled={!input.trim() || sending}
             className="send-btn flex-shrink-0 rounded-xl flex items-center justify-center"
-            style={{
-              width: 32, height: 32,
-              opacity: input.trim() ? 1 : 0.3,
-              cursor: input.trim() ? 'pointer' : 'not-allowed',
-            }}>
+            style={{ width: 32, height: 32, opacity: input.trim() ? 1 : 0.3, cursor: input.trim() ? 'pointer' : 'not-allowed' }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
               <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
               <path d="M22 2L15 22 11 13 2 9l20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -332,7 +377,6 @@ export default function Chat() {
   const [messages, setMessages] = useState([])
   const [unread, setUnread] = useState({})
   const [loadingUsers, setLoadingUsers] = useState(true)
-  // 모바일: 'list' | 'chat'
   const [mobileView, setMobileView] = useState('list')
   const activeUserRef = useRef(null)
 
@@ -368,6 +412,13 @@ export default function Chat() {
         .sort((a, b) => a.timestamp - b.timestamp)
       setMessages(all)
       setUnread((prev) => ({ ...prev, [activeUser.uid]: 0 }))
+      const updates = {}
+      Object.entries(data).forEach(([id, m]) => {
+        if (m.sender !== me.uid && !m.readAt && m.timestamp && isSameDay(m.timestamp)) {
+          updates[`rooms/${roomId}/messages/${id}/readAt`] = Date.now()
+        }
+      })
+      if (Object.keys(updates).length > 0) update(ref(db), updates)
     })
     return () => unsub()
   }, [me, activeUser])
@@ -380,9 +431,10 @@ export default function Chat() {
       const roomId = [me.uid, u.uid].sort().join('_')
       const unsub = onValue(ref(db, `rooms/${roomId}/messages`), (snap) => {
         const data = snap.val()
-        if (!data) return
-        const msgs = Object.values(data).filter((m) => m.timestamp && isSameDay(m.timestamp))
-        const count = msgs.filter((m) => m.sender !== me.uid).length
+        if (!data) { setUnread((prev) => ({ ...prev, [u.uid]: 0 })); return }
+        const count = Object.values(data).filter(
+          (m) => m.sender !== me.uid && !m.readAt && m.timestamp && isSameDay(m.timestamp)
+        ).length
         if (activeUserRef.current?.uid !== u.uid) {
           setUnread((prev) => ({ ...prev, [u.uid]: count }))
         }
@@ -405,30 +457,25 @@ export default function Chat() {
     router.push('/')
   }
 
-  const handleBack = () => {
-    setMobileView('list')
-    setActiveUser(null)
-  }
-
   return (
     <div className="h-screen overflow-hidden" style={{ background: 'var(--night)' }}>
-      {/* 데스크탑: 2-panel */}
       <div className="hidden md:flex h-full">
         <div style={{ width: 260, flexShrink: 0 }}>
           <Sidebar me={me} users={users} activeUser={activeUser} unread={unread}
             onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers} />
         </div>
-        <ChatPanel me={me} activeUser={activeUser} messages={messages} />
+        {activeUser
+          ? <ChatPanel me={me} activeUser={activeUser} messages={messages} onClose={() => { setActiveUser(null); setMessages([]) }} />
+          : <EmptyState />
+        }
       </div>
-
-      {/* 모바일: 전환형 */}
       <div className="flex md:hidden h-full flex-col">
-        {mobileView === 'list' ? (
-          <Sidebar me={me} users={users} activeUser={activeUser} unread={unread}
-            onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers} />
-        ) : (
-          <ChatPanel me={me} activeUser={activeUser} messages={messages} onBack={handleBack} />
-        )}
+        {mobileView === 'list'
+          ? <Sidebar me={me} users={users} activeUser={activeUser} unread={unread}
+              onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers} />
+          : <ChatPanel me={me} activeUser={activeUser} messages={messages}
+              onBack={() => { setMobileView('list'); setActiveUser(null) }} />
+        }
       </div>
     </div>
   )
