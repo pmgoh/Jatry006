@@ -295,7 +295,99 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
             <p className="text-xs" style={{ color: '#4ade80' }}>온라인</p>
           </div>
         </div>
-        {/* 닫기 버튼 — 데스크탑 전용 */}
+        {/* 보안 모드 컨트롤 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }} ref={settingsRef}>
+          {/* 토글 스위치 */}
+          <button onClick={toggleSecureMode}
+            style={{
+              width: 36, height: 20, borderRadius: 10, padding: 2, cursor: 'pointer',
+              background: secureMode ? 'linear-gradient(135deg, #7c6af7, #4fa3f7)' : 'var(--border)',
+              border: 'none', transition: 'background 0.2s ease', position: 'relative', flexShrink: 0,
+            }}
+            title={secureMode ? '보안 모드 켜짐' : '보안 모드 꺼짐'}
+          >
+            <div style={{
+              width: 16, height: 16, borderRadius: '50%', background: 'white',
+              position: 'absolute', top: 2, transition: 'left 0.2s ease',
+              left: secureMode ? 18 : 2,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            }} />
+          </button>
+
+          {/* 설정 아이콘 */}
+          <button
+            onClick={() => setShowSecureSettings((v) => !v)}
+            className="p-1 rounded-lg transition-colors"
+            style={{ color: showSecureSettings ? '#7c6af7' : 'var(--muted)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#7c6af7' }}
+            onMouseLeave={(e) => { if (!showSecureSettings) e.currentTarget.style.color = 'var(--muted)' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41"/>
+            </svg>
+          </button>
+
+          {/* 설정 말풍선 */}
+          {showSecureSettings && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 10px)', right: 0,
+              width: 220, padding: '14px 16px',
+              background: 'var(--panel)',
+              border: '1px solid var(--border)',
+              borderRadius: 14,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(124,106,247,0.1)',
+              zIndex: 100,
+            }}>
+              {/* 말풍선 꼬리 */}
+              <div style={{
+                position: 'absolute', top: -5, right: 20,
+                width: 10, height: 10,
+                background: 'var(--panel)',
+                border: '1px solid var(--border)',
+                borderBottom: 'none', borderRight: 'none',
+                transform: 'rotate(45deg)',
+              }} />
+              <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-dim)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                보안 설정
+              </p>
+
+              {/* 블러 강도 */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>블러 강도</span>
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>{blurAmount}px</span>
+                </div>
+                <input type="range" min={4} max={24} value={blurAmount}
+                  onChange={(e) => updateBlurAmount(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#7c6af7', cursor: 'pointer', height: 4 }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>약하게</span>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>강하게</span>
+                </div>
+              </div>
+
+              {/* 블러 속도 */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>블러 속도</span>
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>{blurSpeed}ms</span>
+                </div>
+                <input type="range" min={100} max={1000} step={50} value={blurSpeed}
+                  onChange={(e) => updateBlurSpeed(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#7c6af7', cursor: 'pointer', height: 4 }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>빠르게</span>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>느리게</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 닫기 버튼 */}
         {onClose && (
           <button onClick={onClose}
             className="p-1.5 rounded-lg transition-colors"
@@ -311,7 +403,16 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
       </div>
 
       {/* 메시지 리스트 */}
-      <div className="flex-1 overflow-y-auto py-6">
+      <div
+        className="flex-1 overflow-y-auto py-6"
+        onMouseEnter={() => setIsHoveringMessages(true)}
+        onMouseLeave={() => setIsHoveringMessages(false)}
+        style={{
+          filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)',
+          transition: `filter ${blurSpeed}ms ease`,
+          userSelect: secureMode && !isHoveringMessages ? 'none' : 'auto',
+        }}
+      >
         <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 24px' }}>
           {messages.length === 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, textAlign: 'center' }}>
