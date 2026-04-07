@@ -1,0 +1,19 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "rooms": {
+      "$roomId": {
+        ".read": "auth != null && ($roomId.contains(auth.uid))",
+        ".write": "auth != null && ($roomId.contains(auth.uid))",
+        "messages": {
+          ".indexOn": ["timestamp"]
+        }
+      }
+    }
+  }
+}
