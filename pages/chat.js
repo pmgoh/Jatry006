@@ -347,7 +347,8 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
               border: '1px solid var(--border)',
               borderRadius: 14,
               boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(124,106,247,0.1)',
-              zIndex: 100,
+              zIndex: 9999,
+              pointerEvents: 'auto',
             }}>
               {/* 말풍선 꼬리 */}
               <div style={{
