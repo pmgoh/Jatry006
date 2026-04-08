@@ -190,7 +190,7 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
               All
             </p>
             <p className="text-xs" style={{ color: groupUnread > 0 ? 'rgba(124,106,247,0.9)' : 'var(--muted)', fontWeight: groupUnread > 0 ? 500 : 400 }}>
-              {groupUnread > 0 ? `${groupUnread}개의 새 메시지` : 'Everyone's here'}
+              {groupUnread > 0 ? `${groupUnread}개의 새 메시지` : "Everyone is here"}
             </p>
           </div>
           {groupUnread > 0 && (
@@ -339,7 +339,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
         </div>
         <div className="flex-1">
           <p className="text-sm font-medium leading-none mb-0.5" style={{ color: 'var(--text)' }}>All</p>
-          <p className="text-xs" style={{ color: 'var(--text-dim)' }}>Everyone's here</p>
+          <p className="text-xs" style={{ color: 'var(--text-dim)' }}>Everyone is here</p>
         </div>
 
         {/* 보안 모드 */}
