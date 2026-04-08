@@ -187,9 +187,18 @@ function ProfileArea({ meUser, onLogout, onRenameNotify }) {
     if (!trimmed || trimmed === meUser.username || saving) { setEditing(false); return }
     setSaving(true)
     try {
+      const oldName = meUser.username
       await updateProfile(auth.currentUser, { displayName: trimmed })
       await set(ref(db, `users/${meUser.uid}/username`), trimmed)
-      onRenameNotify && onRenameNotify(meUser.username, trimmed)
+      // 그룹챗에 시스템 메시지 전송
+      await push(ref(db, 'rooms/__public__/messages'), {
+        sender: '__system__',
+        senderName: '__system__',
+        text: `${oldName}님이 닉네임을 "${trimmed}"(으)로 변경했습니다`,
+        type: 'system',
+        timestamp: Date.now(),
+      })
+      onRenameNotify && onRenameNotify(oldName, trimmed)
       setEditing(false)
     } finally {
       setSaving(false)
@@ -402,6 +411,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
     prevMsgLen.current = messages.length
     if (!markedRead && lastReadRef.current) {
       lastReadRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setTimeout(() => setMarkedRead(true), 800)
     } else if (isNew) {
       if (isNearBottom.current) {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -588,6 +598,19 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
               msg.timestamp > groupMarkerTs &&
               (!prev || prev.timestamp <= groupMarkerTs)
 
+            // 시스템 메시지
+            if (msg.type === 'system') {
+              return (
+                <div key={msg.id} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0' }}>
+                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                  <span style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', padding: '0 4px' }}>
+                    {msg.text}
+                  </span>
+                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                </div>
+              )
+            }
+
             if (isMe) {
               return (
                 <div key={msg.id}>
@@ -718,6 +741,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
     prevMsgLen.current = messages.length
     if (!markedRead && lastReadRef.current) {
       lastReadRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setTimeout(() => setMarkedRead(true), 800)
     } else if (isNew) {
       if (isNearBottom.current) {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
