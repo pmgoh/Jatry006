@@ -793,25 +793,20 @@ export default function Chat() {
   useEffect(() => {
     if (!me || !activeUser) return
     const roomId = [me.uid, activeUser.uid].sort().join('_')
-    console.log('[DM] listening roomId:', roomId, '| me:', me.uid, '| other:', activeUser.uid)
 
     set(ref(db, `rooms/${roomId}/lastRead/${me.uid}`), Date.now())
     setUnread((prev) => ({ ...prev, [activeUser.uid]: 0 }))
 
     const unsub = onValue(ref(db, `rooms/${roomId}/messages`), (snap) => {
-      console.log('[DM] onValue fired, data:', snap.val())
       const data = snap.val()
       if (!data) { setMessages([]); return }
       const all = Object.entries(data)
         .map(([id, v]) => ({ id, ...v }))
         .filter((m) => m.timestamp && isSameDay(m.timestamp))
         .sort((a, b) => a.timestamp - b.timestamp)
-      console.log('[DM] filtered messages:', all.length)
       setMessages(all)
       set(ref(db, `rooms/${roomId}/lastRead/${me.uid}`), Date.now())
       setUnread((prev) => ({ ...prev, [activeUser.uid]: 0 }))
-    }, (error) => {
-      console.error('[DM] onValue error:', error)
     })
 
     const unsubLastRead = onValue(ref(db, `rooms/${roomId}/lastRead/${activeUser.uid}`), (snap) => {
@@ -819,7 +814,7 @@ export default function Chat() {
       if (ts) setLastRead((prev) => ({ ...prev, [activeUser.uid]: ts }))
     })
 
-    return () => { console.log('[DM] cleanup roomId:', roomId); unsub(); unsubLastRead() }
+    return () => { unsub(); unsubLastRead() }
   }, [me, activeUser])
 
   // All 리스너
