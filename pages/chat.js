@@ -1001,7 +1001,7 @@ export default function Chat() {
 
   // 탭 타이틀 미읽음 숫자 업데이트
   useEffect(() => {
-    const total = Object.values(unread).reduce((a, b) => a + b, 0) + groupUnread
+    const total = Object.values(unread).reduce((a, b) => a + (Number(b) || 0), 0) + (Number(groupUnread) || 0)
     totalUnreadRef.current = total
     if (total > 0) {
       document.title = `(${total}) Jatry 메신저`
@@ -1081,19 +1081,20 @@ export default function Chat() {
     return () => { unsub(); unsubLR() }
   }, [me])
 
-  // All방 미읽음 카운트
+  // All방 미읽음 카운트 — localStorage lastSeen 기반
   useEffect(() => {
     if (!me) return
     const unsub = onValue(ref(db, 'rooms/__public__/messages'), (snap) => {
       const data = snap.val()
       if (!data || activeGroupRef.current) return
+      const lastSeen = parseInt(localStorage.getItem('lastSeen___public__') || '0')
       const count = Object.values(data).filter(
-        (m) => m.sender !== me.uid && m.timestamp > lastGroupRead && isSameDay(m.timestamp)
+        (m) => m.sender !== me.uid && m.timestamp > lastSeen && isSameDay(m.timestamp)
       ).length
       setGroupUnread(count)
     })
     return () => unsub()
-  }, [me, lastGroupRead])
+  }, [me])
 
   // 전체 미읽음 카운트 — lastRead 기반
   useEffect(() => {
@@ -1145,6 +1146,10 @@ export default function Chat() {
   }
 
   const handleSelectGroup = () => {
+    // 이전 채팅 lastSeen 저장
+    if (activeUserRef.current) {
+      localStorage.setItem(`lastSeen_${activeUserRef.current.uid}`, String(Date.now()))
+    }
     setActiveGroup(true)
     setActiveUser(null)
     setMessages([])
@@ -1156,6 +1161,9 @@ export default function Chat() {
   const handleCloseChat = () => {
     if (activeUserRef.current) {
       localStorage.setItem(`lastSeen_${activeUserRef.current.uid}`, String(Date.now()))
+    }
+    if (activeGroupRef.current) {
+      localStorage.setItem('lastSeen___public__', String(Date.now()))
     }
     setActiveUser(null)
     setActiveGroup(false)
