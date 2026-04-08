@@ -581,6 +581,21 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+  // 탭 비활성/창 포커스 잃을 때 lastSeen 저장
+  useEffect(() => {
+    if (!activeUser) return
+    const saveLastSeen = () => {
+      if (document.visibilityState === 'hidden' || !document.hasFocus()) {
+        localStorage.setItem(`lastSeen_${activeUser.uid}`, String(Date.now()))
+      }
+    }
+    document.addEventListener('visibilitychange', saveLastSeen)
+    window.addEventListener('blur', saveLastSeen)
+    return () => {
+      document.removeEventListener('visibilitychange', saveLastSeen)
+      window.removeEventListener('blur', saveLastSeen)
+    }
+  }, [activeUser])
 
   const otherLastRead = lastRead?.[activeUser?.uid] || 0
   if (!activeUser || !me) return null
@@ -937,8 +952,6 @@ export default function Chat() {
     if (!me || !activeUser) return
     const roomId = [me.uid, activeUser.uid].sort().join('_')
 
-    // 채팅 열기 직전 내 lastRead 기록 — 구분선용
-    setLastRead((prev) => ({ ...prev, [`me_${activeUser.uid}`]: prev[`me_${activeUser.uid}`] || Date.now() }))
     set(ref(db, `rooms/${roomId}/lastRead/${me.uid}`), Date.now())
     setUnread((prev) => ({ ...prev, [activeUser.uid]: 0 }))
 
@@ -1039,6 +1052,10 @@ export default function Chat() {
   }, [me, users])
 
   const handleSelectUser = (user) => {
+    // 이전 채팅 나가는 시간 저장
+    if (activeUserRef.current) {
+      localStorage.setItem(`lastSeen_${activeUserRef.current.uid}`, String(Date.now()))
+    }
     setActiveUser(user)
     setActiveGroup(false)
     setMessages([])
@@ -1056,6 +1073,9 @@ export default function Chat() {
   }
 
   const handleCloseChat = () => {
+    if (activeUserRef.current) {
+      localStorage.setItem(`lastSeen_${activeUserRef.current.uid}`, String(Date.now()))
+    }
     setActiveUser(null)
     setActiveGroup(false)
     setMessages([])
@@ -1099,7 +1119,7 @@ export default function Chat() {
           : activeUser
             ? <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead} onClose={handleCloseChat}
               notifyEnabled={notifySettings[activeUser?.uid] !== false}
-              lastReadMark={lastRead[`me_${activeUser?.uid}`] || 0}
+              lastReadMark={typeof window !== 'undefined' ? parseInt(localStorage.getItem(`lastSeen_${activeUser?.uid}`) || '0') : 0}
               onToggleNotify={() => {
                 const uid = activeUser?.uid
                 if (!uid) return
@@ -1121,7 +1141,7 @@ export default function Chat() {
             : <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead}
                 onBack={() => { setMobileView('list'); setActiveUser(null) }}
                 notifyEnabled={notifySettings[activeUser?.uid] !== false}
-                lastReadMark={lastRead[`me_${activeUser?.uid}`] || 0}
+                lastReadMark={typeof window !== 'undefined' ? parseInt(localStorage.getItem(`lastSeen_${activeUser?.uid}`) || '0') : 0}
                 onToggleNotify={() => {
                   const uid = activeUser?.uid
                   if (!uid) return
