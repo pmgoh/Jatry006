@@ -689,7 +689,7 @@ function EmptyState() {
   )
 }
 
-function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notifyEnabled, onToggleNotify, lastReadMark }) {
+function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notifyEnabled, onToggleNotify, lastReadMark, liveUsers }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const bottomRef = useRef(null)
@@ -855,10 +855,18 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
         <AIIcon size={34} />
         <div className="flex-1">
           <p className="text-sm font-medium leading-none mb-0.5" style={{ color: 'var(--text)' }}>{activeUser.username}</p>
-          <div className="flex items-center gap-1.5">
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 4px rgba(74,222,128,0.6)' }} />
-            <p className="text-xs" style={{ color: '#4ade80' }}>온라인</p>
-          </div>
+          {(() => {
+            const live = liveUsers?.find(u => u.uid === activeUser.uid)
+            const isOnline = live ? live.online : activeUser.online
+            return (
+              <div className="flex items-center gap-1.5">
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: isOnline ? '#4ade80' : 'var(--muted)', boxShadow: isOnline ? '0 0 4px rgba(74,222,128,0.6)' : 'none' }} />
+                <p className="text-xs" style={{ color: isOnline ? '#4ade80' : 'var(--text-dim)' }}>
+                  {isOnline ? '온라인' : formatLastSeen(live?.lastSeen)}
+                </p>
+              </div>
+            )
+          })()}
         </div>
         {/* 보안 모드 컨트롤 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }} ref={settingsRef}>
@@ -1064,6 +1072,7 @@ export default function Chat() {
   const [groupMessages, setGroupMessages] = useState([])
   const [unread, setUnread] = useState({})
   const [groupUnread, setGroupUnread] = useState(0)
+  const [groupMarkerTs, setGroupMarkerTs] = useState(0)
   const [lastRead, setLastRead] = useState({})
   const [lastGroupRead, setLastGroupRead] = useState(0)
   const [loadingUsers, setLoadingUsers] = useState(true)
@@ -1323,6 +1332,7 @@ export default function Chat() {
             ? <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead} onClose={handleCloseChat}
               notifyEnabled={notifySettings[activeUser?.uid] !== false}
               lastReadMark={typeof window !== 'undefined' ? parseInt(localStorage.getItem(`lastSeen_${activeUser?.uid}`) || '0') : 0}
+              liveUsers={users}
               onToggleNotify={() => {
                 const uid = activeUser?.uid
                 if (!uid) return
