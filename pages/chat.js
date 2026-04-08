@@ -1,6 +1,28 @@
 import { useEffect, useState, useRef } from 'react'
 
 const APP_VERSION = '1.1'
+
+// 알림 권한 요청
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) return false
+  if (Notification.permission === 'granted') return true
+  if (Notification.permission === 'denied') return false
+  const result = await Notification.requestPermission()
+  return result === 'granted'
+}
+
+// 아이콘만 있는 OS 알림
+function sendSilentNotification() {
+  if (!('Notification' in window)) return
+  if (Notification.permission !== 'granted') return
+  const n = new Notification('', {
+    icon: '/favicon.svg',
+    badge: '/favicon.svg',
+    silent: true,
+    tag: 'msng-new-msg', // 같은 tag면 쌓이지 않고 교체
+  })
+  setTimeout(() => n.close(), 2500)
+}
 import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
@@ -502,7 +524,7 @@ function EmptyState() {
   )
 }
 
-function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
+function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notifyEnabled, onToggleNotify }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const bottomRef = useRef(null)
@@ -755,6 +777,12 @@ export default function Chat() {
   const [activeUser, setActiveUser] = useState(null)
   const [activeGroup, setActiveGroup] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  // 알림 설정: { [uid]: true/false }, '__public__': true/false
+  const [notifySettings, setNotifySettings] = useState(() => {
+    if (typeof window === 'undefined') return {}
+    try { return JSON.parse(localStorage.getItem('notifySettings') || '{}') } catch { return {} }
+  })
+  const totalUnreadRef = useRef(0)
   const [messages, setMessages] = useState([])
   const [groupMessages, setGroupMessages] = useState([])
   const [unread, setUnread] = useState({})
@@ -770,6 +798,20 @@ export default function Chat() {
   useEffect(() => { activeUserRef.current = activeUser }, [activeUser])
   useEffect(() => { activeGroupRef.current = activeGroup }, [activeGroup])
   useEffect(() => { meRef.current = me }, [me])
+
+  // 알림 권한 요청 (최초 1회)
+  useEffect(() => { requestNotificationPermission() }, [])
+
+  // 탭 타이틀 미읽음 숫자 업데이트
+  useEffect(() => {
+    const total = Object.values(unread).reduce((a, b) => a + b, 0) + groupUnread
+    totalUnreadRef.current = total
+    if (total > 0) {
+      document.title = `(${total}) Jatry 메신저`
+    } else {
+      document.title = 'Jatry 메신저'
+    }
+  }, [unread, groupUnread])
 
   useEffect(() => {
     let unsubUsers = null
@@ -877,7 +919,14 @@ export default function Chat() {
         const count = Object.values(data).filter(
           (m) => m.sender !== me.uid && m.timestamp > myLastRead && isSameDay(m.timestamp)
         ).length
-        setUnread((prev) => ({ ...prev, [u.uid]: count }))
+        setUnread((prev) => {
+          // 이전보다 늘었을 때만 알림
+          if (count > (prev[u.uid] || 0)) {
+            const settings = JSON.parse(localStorage.getItem('notifySettings') || '{}')
+            if (settings[u.uid] !== false) sendSilentNotification()
+          }
+          return { ...prev, [u.uid]: count }
+        })
       })
       unsubs.push(unsubLR, unsubMsgs)
     })
@@ -943,7 +992,15 @@ export default function Chat() {
         {activeGroup
           ? <GroupChatPanel me={me} messages={groupMessages} lastGroupRead={lastGroupRead} onClose={handleCloseChat} />
           : activeUser
-            ? <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead} onClose={handleCloseChat} />
+            ? <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead} onClose={handleCloseChat}
+              notifyEnabled={notifySettings[activeUser?.uid] !== false}
+              onToggleNotify={() => {
+                const uid = activeUser?.uid
+                if (!uid) return
+                const next = { ...notifySettings, [uid]: notifySettings[uid] === false ? true : false }
+                setNotifySettings(next)
+                localStorage.setItem('notifySettings', JSON.stringify(next))
+              }} />
             : <EmptyState />
         }
       </div>
@@ -956,7 +1013,15 @@ export default function Chat() {
             ? <GroupChatPanel me={me} messages={groupMessages} lastGroupRead={lastGroupRead}
                 onBack={() => { setMobileView('list'); setActiveGroup(false) }} />
             : <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead}
-                onBack={() => { setMobileView('list'); setActiveUser(null) }} />
+                onBack={() => { setMobileView('list'); setActiveUser(null) }}
+                notifyEnabled={notifySettings[activeUser?.uid] !== false}
+                onToggleNotify={() => {
+                  const uid = activeUser?.uid
+                  if (!uid) return
+                  const next = { ...notifySettings, [uid]: notifySettings[uid] === false ? true : false }
+                  setNotifySettings(next)
+                  localStorage.setItem('notifySettings', JSON.stringify(next))
+                }} />
         }
       </div>
 
