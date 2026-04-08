@@ -255,6 +255,28 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
   const otherUsers = users.filter((u) => u.uid !== me?.uid)
   const meUser = users.find((u) => u.uid === me?.uid)
 
+  const [countdown, setCountdown] = useState('')
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date()
+      const midnight = new Date()
+      midnight.setHours(24, 0, 0, 0)
+      const diff = midnight - now
+      const h = Math.floor(diff / 3600000)
+      const m = Math.floor((diff % 3600000) / 60000)
+      const s = Math.floor((diff % 60000) / 1000)
+      setCountdown(`${h}시간 ${m}분 ${s}초`)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const todayLabel = (() => {
+    const d = new Date()
+    return `${d.getMonth()+1}/${d.getDate()}`
+  })()
+
   return (
     <aside className="flex flex-col h-full" style={{ background: 'var(--surface)', borderRight: '1px solid var(--border)' }}>
       <div className="flex items-center gap-2.5 px-4 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -264,7 +286,7 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
           </svg>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold leading-none" style={{ color: 'var(--text)' }}>Jatry 메신저</p>
+          <p className="text-xs font-semibold leading-none" style={{ color: 'var(--text)' }}>Jatry</p>
           <p className="mt-0.5" style={{ color: 'var(--muted)', fontSize: 10 }}>AI 프로젝트 06번째</p>
         </div>
         {onClose && (
@@ -307,7 +329,7 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
               All
             </p>
             <p className="text-xs" style={{ color: groupUnread > 0 ? 'rgba(124,106,247,0.9)' : 'var(--muted)', fontWeight: groupUnread > 0 ? 500 : 400 }}>
-              {groupUnread > 0 ? `${groupUnread}개의 새 메시지` : "Everyone is here"}
+              {groupUnread > 0 ? `${groupUnread}개의 새 메시지` : `오늘 ${todayLabel} · ${countdown} 후 초기화`}
             </p>
           </div>
           {groupUnread > 0 && (
@@ -1139,6 +1161,19 @@ export default function Chat() {
           set(onlineRef, true)
         }
       })
+
+      // 탭 포커스에 따라 online 상태 업데이트
+      const handleVisibility = () => {
+        if (document.visibilityState === 'hidden' || !document.hasFocus()) {
+          set(ref(db, `users/${user.uid}/online`), false)
+          set(ref(db, `users/${user.uid}/lastSeen`), Date.now())
+        } else {
+          set(ref(db, `users/${user.uid}/online`), true)
+        }
+      }
+      document.addEventListener('visibilitychange', handleVisibility)
+      window.addEventListener('focus', handleVisibility)
+      window.addEventListener('blur', handleVisibility)
 
       unsubUsers = onValue(ref(db, 'users'), (snap) => {
         const data = snap.val()
