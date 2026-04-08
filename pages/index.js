@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-const APP_VERSION = '1.1'
+const APP_VERSION = '1.2'
 import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
 import {
@@ -132,10 +132,11 @@ export default function AuthPage() {
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
   const [showSignup, setShowSignup] = useState(false)
+  const [isOldVersion, setIsOldVersion] = useState(false)
 
   const handleLogin = async (e) => {
     e.preventDefault()
-    setError(''); setSuccess('')
+    setError(''); setSuccess(''); setIsOldVersion(false)
     setLoading(true)
     try {
       const cred = await signInWithEmailAndPassword(auth, fakeEmail(username), password)
@@ -148,6 +149,13 @@ export default function AuthPage() {
         setError('네트워크 오류가 발생했어요. 인터넷 연결을 확인해주세요.')
       } else if (err.code === 'auth/too-many-requests') {
         setError('잠시 후 다시 시도해주세요. (요청이 너무 많아요)')
+      } else if (
+        err.code === 'auth/invalid-credential' ||
+        err.code === 'auth/user-not-found' ||
+        err.code === 'auth/wrong-password'
+      ) {
+        setError('이전 버전에서 만든 계정이에요. 새 계정을 만들어 입장해주세요.')
+        setIsOldVersion(true)
       } else {
         setError('닉네임 또는 비밀번호가 올바르지 않아요. 오늘 만든 계정인지 확인해주세요.')
       }
@@ -234,7 +242,25 @@ export default function AuthPage() {
                 />
               </div>
 
-              {error && <p className="text-xs px-3 py-2 rounded-lg" style={{ color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>{error}</p>}
+              {error && (
+                <div>
+                  <p className="text-xs px-3 py-2 rounded-lg" style={{ color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>{error}</p>
+                  {isOldVersion && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowSignup(true); setError(''); setIsOldVersion(false) }}
+                      className="w-full mt-2 py-2.5 rounded-xl text-xs font-medium transition-all duration-200"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(124,106,247,0.15), rgba(79,163,247,0.1))',
+                        border: '1px solid rgba(124,106,247,0.3)',
+                        color: '#9b8df9',
+                      }}
+                    >
+                      새 계정 만들기 →
+                    </button>
+                  )}
+                </div>
+              )}
               {success && <p className="text-xs px-3 py-2 rounded-lg" style={{ color: '#4ade80', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}>{success}</p>}
 
               <button type="submit" disabled={loading}

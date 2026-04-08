@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 
-const APP_VERSION = '1.1'
+const APP_VERSION = '1.2'
 
 function formatLastSeen(ts) {
   if (!ts) return '오프라인'
@@ -37,7 +37,7 @@ function sendSilentNotification() {
 }
 import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
-import { onAuthStateChanged, signOut } from 'firebase/auth'
+import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth'
 import { ref, onValue, set, push, onDisconnect } from 'firebase/database'
 
 function formatTime(ts) {
@@ -170,7 +170,79 @@ function MyMessageBubble({ msg, isFirst, isLast, otherLastRead }) {
   )
 }
 
-function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers, activeGroup, onSelectGroup, groupUnread, onClose }) {
+function ProfileArea({ meUser, onLogout, onRenameNotify }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const inputRef = useRef(null)
+
+  const startEdit = () => {
+    setDraft(meUser.username)
+    setEditing(true)
+    setTimeout(() => inputRef.current?.select(), 50)
+  }
+
+  const handleSave = async () => {
+    const trimmed = draft.trim()
+    if (!trimmed || trimmed === meUser.username || saving) { setEditing(false); return }
+    setSaving(true)
+    try {
+      await updateProfile(auth.currentUser, { displayName: trimmed })
+      await set(ref(db, `users/${meUser.uid}/username`), trimmed)
+      onRenameNotify && onRenameNotify(meUser.username, trimmed)
+      setEditing(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleSave()
+    if (e.key === 'Escape') setEditing(false)
+  }
+
+  return (
+    <div className="flex items-center gap-2.5 px-3 py-3 flex-shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
+      <Avatar name={meUser.username} size={30} />
+      <div className="flex-1 min-w-0">
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={handleSave}
+            className="w-full bg-transparent outline-none text-xs font-medium"
+            style={{
+              color: 'var(--text)',
+              borderBottom: '1px solid rgba(124,106,247,0.5)',
+              paddingBottom: 1,
+            }}
+          />
+        ) : (
+          <button onClick={startEdit} className="text-left w-full group" style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'text' }}>
+            <p className="text-xs font-medium truncate" style={{ color: 'var(--text)' }}>
+              {meUser.username}
+              <span style={{ color: 'var(--muted)', marginLeft: 4, fontSize: 10, opacity: 0 }} className="group-hover:opacity-100 transition-opacity">
+                ✏️
+              </span>
+            </p>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>클릭해서 닉네임 변경</p>
+          </button>
+        )}
+      </div>
+      <button onClick={onLogout} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--muted)' }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.background = 'rgba(248,113,113,0.08)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+        </svg>
+      </button>
+    </div>
+  )
+}
+
+function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers, activeGroup, onSelectGroup, groupUnread, onClose, onRenameNotify }) {
   const otherUsers = users.filter((u) => u.uid !== me?.uid)
   const meUser = users.find((u) => u.uid === me?.uid)
 
@@ -299,27 +371,12 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
         )}
       </div>
 
-      {meUser && (
-        <div className="flex items-center gap-2.5 px-3 py-3 flex-shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
-          <Avatar name={meUser.username} size={30} />
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium truncate" style={{ color: 'var(--text)' }}>{meUser.username}</p>
-            <p className="text-xs" style={{ color: 'var(--muted)' }}>나</p>
-          </div>
-          <button onClick={onLogout} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--muted)' }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.background = 'rgba(248,113,113,0.08)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
-            </svg>
-          </button>
-        </div>
-      )}
+      {meUser && <ProfileArea meUser={meUser} onLogout={onLogout} onRenameNotify={onRenameNotify} />}
     </aside>
   )
 }
 
-function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
+function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, onClose }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const bottomRef = useRef(null)
@@ -345,7 +402,6 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
     prevMsgLen.current = messages.length
     if (!markedRead && lastReadRef.current) {
       lastReadRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      setTimeout(() => setMarkedRead(true), 1200)
     } else if (isNew) {
       if (isNearBottom.current) {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -363,11 +419,12 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // 탭 비활성/창 포커스 잃을 때 lastSeen 저장
+  // 탭 비활성/창 포커스 잃을 때 lastSeen 저장 + markedRead 리셋
   useEffect(() => {
     const saveLastSeen = () => {
       if (document.visibilityState === 'hidden' || !document.hasFocus()) {
         localStorage.setItem('lastSeen___public__', String(Date.now()))
+        setMarkedRead(false)
       }
     }
     document.addEventListener('visibilitychange', saveLastSeen)
@@ -527,10 +584,9 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
             const prev = messages[i - 1], next = messages[i + 1]
             const isFirst = !prev || prev.sender !== msg.sender
             const isLast = !next || next.sender !== msg.sender
-            const groupLastSeen = typeof window !== 'undefined' ? parseInt(localStorage.getItem('lastSeen___public__') || '0') : 0
-            const showMark = groupLastSeen && !markedRead &&
-              msg.timestamp > groupLastSeen &&
-              (!prev || prev.timestamp <= groupLastSeen)
+            const showMark = groupMarkerTs && !markedRead &&
+              msg.timestamp > groupMarkerTs &&
+              (!prev || prev.timestamp <= groupMarkerTs)
 
             if (isMe) {
               return (
@@ -662,7 +718,6 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
     prevMsgLen.current = messages.length
     if (!markedRead && lastReadRef.current) {
       lastReadRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      setTimeout(() => setMarkedRead(true), 1200)
     } else if (isNew) {
       if (isNearBottom.current) {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -682,13 +737,17 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
-  // 탭 비활성/창 포커스 잃을 때 lastSeen 저장
+  // 탭 비활성/창 포커스 잃을 때 lastSeen 저장 + markedRead 리셋
   useEffect(() => {
     if (!activeUser) return
     const saveLastSeen = () => {
       if (document.visibilityState === 'hidden' || !document.hasFocus()) {
         localStorage.setItem(`lastSeen_${activeUser.uid}`, String(Date.now()))
+        setMarkedRead(false)
       }
+    }
+    const onFocus = () => {
+      // 포커스 돌아오면 구분선 다시 표시 (markedRead = false 유지)
     }
     document.addEventListener('visibilitychange', saveLastSeen)
     window.addEventListener('blur', saveLastSeen)
@@ -994,6 +1053,7 @@ export default function Chat() {
   const [activeUser, setActiveUser] = useState(null)
   const [activeGroup, setActiveGroup] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [renameNotice, setRenameNotice] = useState(null) // { from, to }
   // 알림 설정: { [uid]: true/false }, '__public__': true/false
   const [notifySettings, setNotifySettings] = useState(() => {
     if (typeof window === 'undefined') return {}
@@ -1050,8 +1110,14 @@ export default function Chat() {
       unsubUsers = onValue(ref(db, 'users'), (snap) => {
         const data = snap.val()
         if (!data) { setUsers([]); setLoadingUsers(false); return }
-        // 빈 배열 깜빡임 방지 — 유저가 있을 때만 업데이트
-        const list = Object.values(data).filter((u) => u.online && u.username)
+        const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+        const list = Object.values(data)
+          .filter((u) => u.username && u.createdDate === todayStr)
+          .sort((a, b) => {
+            if (a.online && !b.online) return -1
+            if (!a.online && b.online) return 1
+            return (b.lastSeen || 0) - (a.lastSeen || 0)
+          })
         setUsers(list)
         setLoadingUsers(false)
       })
@@ -1183,10 +1249,14 @@ export default function Chat() {
   }
 
   const handleSelectGroup = () => {
-    // 이전 채팅 lastSeen 저장
     if (activeUserRef.current) {
       localStorage.setItem(`lastSeen_${activeUserRef.current.uid}`, String(Date.now()))
     }
+    // 진입 전 lastSeen을 markerTs로 보존 후, lastSeen을 now로 업데이트
+    // → 다음 진입 시 이 시점 이후 메시지만 마커 표시
+    const prevLastSeen = parseInt(localStorage.getItem('lastSeen___public__') || '0')
+    localStorage.setItem('lastSeen___public__', String(Date.now()))
+    setGroupMarkerTs(prevLastSeen)
     setActiveGroup(true)
     setActiveUser(null)
     setMessages([])
@@ -1205,6 +1275,10 @@ export default function Chat() {
     setActiveUser(null)
     setActiveGroup(false)
     setMessages([])
+  }
+
+  const handleRenameNotify = (from, to) => {
+    setRenameNotice({ from, to })
   }
 
   const handleLogout = async () => {
@@ -1241,10 +1315,10 @@ export default function Chat() {
           <Sidebar me={me} users={users} activeUser={activeUser} unread={unread}
             onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers}
             activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread}
-            onClose={() => setSidebarOpen(false)} />
+            onClose={() => setSidebarOpen(false)} onRenameNotify={handleRenameNotify} />
         </div>
         {activeGroup
-          ? <GroupChatPanel me={me} messages={groupMessages} lastGroupRead={lastGroupRead} onClose={handleCloseChat} />
+          ? <GroupChatPanel me={me} messages={groupMessages} lastGroupRead={lastGroupRead} groupMarkerTs={groupMarkerTs} onClose={handleCloseChat} />
           : activeUser
             ? <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead} onClose={handleCloseChat}
               notifyEnabled={notifySettings[activeUser?.uid] !== false}
@@ -1263,9 +1337,9 @@ export default function Chat() {
         {mobileView === 'list'
           ? <Sidebar me={me} users={users} activeUser={activeUser} unread={unread}
               onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers}
-              activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread} />
+              activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread} onRenameNotify={handleRenameNotify} />
           : activeGroup
-            ? <GroupChatPanel me={me} messages={groupMessages} lastGroupRead={lastGroupRead}
+            ? <GroupChatPanel me={me} messages={groupMessages} lastGroupRead={lastGroupRead} groupMarkerTs={groupMarkerTs}
                 onBack={() => { setMobileView('list'); setActiveGroup(false) }} />
             : <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead}
                 onBack={() => { setMobileView('list'); setActiveUser(null) }}
@@ -1290,6 +1364,40 @@ export default function Chat() {
       }}>
         v{APP_VERSION}
       </div>
+
+      {/* 닉네임 변경 알림 */}
+      {renameNotice && (
+        <div style={{
+          position: 'fixed', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 200,
+          background: 'var(--panel)',
+          border: '1px solid rgba(124,106,247,0.3)',
+          borderRadius: 16,
+          padding: '20px 28px',
+          textAlign: 'center',
+          boxShadow: '0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(124,106,247,0.1)',
+          minWidth: 240,
+        }}>
+          <div style={{ fontSize: 22, marginBottom: 10 }}>✏️</div>
+          <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 6 }}>닉네임이 변경되었습니다</p>
+          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>
+            <span style={{ color: 'var(--muted)', textDecoration: 'line-through', fontWeight: 400, marginRight: 6 }}>{renameNotice.from}</span>
+            → {renameNotice.to}
+          </p>
+          <button
+            onClick={() => setRenameNotice(null)}
+            style={{
+              marginTop: 16, padding: '6px 20px', borderRadius: 8,
+              background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)',
+              border: 'none', color: 'white', fontSize: 12,
+              fontWeight: 500, cursor: 'pointer',
+            }}
+          >
+            확인
+          </button>
+        </div>
+      )}
     </div>
   )
 }
