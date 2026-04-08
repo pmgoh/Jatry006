@@ -304,6 +304,13 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
   const [sending, setSending] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+  const lastReadRef = useRef(null)
+  const scrollContainerRef = useRef(null)
+  const [markedRead, setMarkedRead] = useState(false)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [newMsgCount, setNewMsgCount] = useState(0)
+  const prevMsgLen = useRef(0)
+  const isNearBottom = useRef(true)
 
   const [secureMode, setSecureMode] = useState(() => typeof window !== 'undefined' && localStorage.getItem('secureMode') === 'true')
   const [showSecureSettings, setShowSecureSettings] = useState(false)
@@ -525,7 +532,7 @@ function EmptyState() {
   )
 }
 
-function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notifyEnabled, onToggleNotify }) {
+function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notifyEnabled, onToggleNotify, lastReadMark }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const bottomRef = useRef(null)
@@ -698,16 +705,52 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
       </div>
 
       {/* 메시지 리스트 */}
-      <div
-        className="flex-1 overflow-y-auto py-6"
-        onMouseEnter={() => setIsHoveringMessages(true)}
-        onMouseLeave={() => setIsHoveringMessages(false)}
-        style={{
-          filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)',
-          transition: `filter ${blurSpeed}ms ease`,
-          userSelect: secureMode && !isHoveringMessages ? 'none' : 'auto',
-        }}
-      >
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        {/* 새 메시지 버튼 */}
+        {showScrollBtn && (
+          <button
+            onClick={() => {
+              bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+              setShowScrollBtn(false)
+              setNewMsgCount(0)
+            }}
+            style={{
+              position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)',
+              zIndex: 20, display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', borderRadius: 20,
+              background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)',
+              border: 'none', cursor: 'pointer', color: 'white',
+              fontSize: 12, fontWeight: 600,
+              boxShadow: '0 4px 16px rgba(124,106,247,0.4)',
+              animation: 'fadeUp 0.2s ease',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+              <path d="M12 5v14M5 12l7 7 7-7"/>
+            </svg>
+            새 메시지 {newMsgCount > 0 ? newMsgCount : ''}
+          </button>
+        )}
+        <div
+          ref={scrollContainerRef}
+          className="h-full overflow-y-auto py-6"
+          onMouseEnter={() => setIsHoveringMessages(true)}
+          onMouseLeave={() => setIsHoveringMessages(false)}
+          onScroll={(e) => {
+            const el = e.currentTarget
+            const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+            isNearBottom.current = distFromBottom < 80
+            if (isNearBottom.current) {
+              setShowScrollBtn(false)
+              setNewMsgCount(0)
+            }
+          }}
+          style={{
+            filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)',
+            transition: `filter ${blurSpeed}ms ease`,
+            userSelect: secureMode && !isHoveringMessages ? 'none' : 'auto',
+          }}
+        >
         <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 24px' }}>
           {messages.length === 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, textAlign: 'center' }}>
@@ -721,9 +764,33 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
             const prev = messages[i - 1], next = messages[i + 1]
             const isFirst = !prev || prev.sender !== msg.sender
             const isLast = !next || next.sender !== msg.sender
-            return isMe
-              ? <MyMessageBubble key={msg.id} msg={msg} isFirst={isFirst} isLast={isLast} otherLastRead={otherLastRead} />
-              : <AIMessageBubble key={msg.id} msg={msg} isFirst={isFirst} isLast={isLast} />
+
+            // 마지막 읽은 위치 구분선 — lastReadMark 이후 첫 번째 메시지 앞에
+            const showMark = lastReadMark && !markedRead &&
+              msg.timestamp > lastReadMark &&
+              (!prev || prev.timestamp <= lastReadMark)
+
+            return (
+              <div key={msg.id}>
+                {showMark && (
+                  <div ref={lastReadRef} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    margin: '20px 0 16px',
+                    opacity: 0.7,
+                  }}>
+                    <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, rgba(124,106,247,0.4))' }} />
+                    <span style={{ fontSize: 11, color: 'rgba(124,106,247,0.7)', whiteSpace: 'nowrap', letterSpacing: '0.03em' }}>
+                      여기까지 읽었어요
+                    </span>
+                    <div style={{ flex: 1, height: 1, background: 'linear-gradient(270deg, transparent, rgba(124,106,247,0.4))' }} />
+                  </div>
+                )}
+                {isMe
+                  ? <MyMessageBubble msg={msg} isFirst={isFirst} isLast={isLast} otherLastRead={otherLastRead} />
+                  : <AIMessageBubble msg={msg} isFirst={isFirst} isLast={isLast} />
+                }
+              </div>
+            )
           })}
           <div ref={bottomRef} />
         </div>
@@ -837,6 +904,8 @@ export default function Chat() {
     if (!me || !activeUser) return
     const roomId = [me.uid, activeUser.uid].sort().join('_')
 
+    // 채팅 열기 직전 내 lastRead 기록 — 구분선용
+    setLastRead((prev) => ({ ...prev, [`me_${activeUser.uid}`]: prev[`me_${activeUser.uid}`] || Date.now() }))
     set(ref(db, `rooms/${roomId}/lastRead/${me.uid}`), Date.now())
     setUnread((prev) => ({ ...prev, [activeUser.uid]: 0 }))
 
@@ -997,6 +1066,7 @@ export default function Chat() {
           : activeUser
             ? <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead} onClose={handleCloseChat}
               notifyEnabled={notifySettings[activeUser?.uid] !== false}
+              lastReadMark={lastRead[`me_${activeUser?.uid}`] || 0}
               onToggleNotify={() => {
                 const uid = activeUser?.uid
                 if (!uid) return
@@ -1018,6 +1088,7 @@ export default function Chat() {
             : <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead}
                 onBack={() => { setMobileView('list'); setActiveUser(null) }}
                 notifyEnabled={notifySettings[activeUser?.uid] !== false}
+                lastReadMark={lastRead[`me_${activeUser?.uid}`] || 0}
                 onToggleNotify={() => {
                   const uid = activeUser?.uid
                   if (!uid) return
