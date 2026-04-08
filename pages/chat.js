@@ -1078,9 +1078,12 @@ export default function Chat() {
         .filter((m) => m.timestamp && isSameDay(m.timestamp))
         .sort((a, b) => a.timestamp - b.timestamp)
       setGroupMessages(all)
-      if (activeGroupRef.current) {
+      // 탭이 보이고 있고 그룹챗이 활성일 때만 읽음 처리
+      const tabVisible = document.visibilityState !== 'hidden' && document.hasFocus()
+      if (activeGroupRef.current && tabVisible) {
         set(ref(db, `rooms/__public__/lastRead/${me.uid}`), Date.now())
         setGroupUnread(0)
+        localStorage.setItem('lastSeen___public__', String(Date.now()))
       }
     })
     // All방 lastRead 기반 미읽음
@@ -1097,7 +1100,10 @@ export default function Chat() {
     if (!me) return
     const unsub = onValue(ref(db, 'rooms/__public__/messages'), (snap) => {
       const data = snap.val()
-      if (!data || activeGroupRef.current) return
+      if (!data) return
+      const tabVisible = document.visibilityState !== 'hidden' && document.hasFocus()
+      // 탭 보이고 그룹챗 열려있으면 카운트 안 함
+      if (activeGroupRef.current && tabVisible) return
       const lastSeen = parseInt(localStorage.getItem('lastSeen___public__') || '0')
       const count = Object.values(data).filter(
         (m) => m.sender !== me.uid && m.timestamp > lastSeen && isSameDay(m.timestamp)
