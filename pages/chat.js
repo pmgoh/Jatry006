@@ -537,19 +537,51 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
   const [sending, setSending] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+  const lastReadRef = useRef(null)
+  const scrollContainerRef = useRef(null)
   const settingsRef = useRef(null)
-  const [secureMode, setSecureMode] = useState(false)
+  const [secureMode, setSecureMode] = useState(() => typeof window !== 'undefined' && localStorage.getItem('secureMode') === 'true')
   const [showSecureSettings, setShowSecureSettings] = useState(false)
   const [isHoveringMessages, setIsHoveringMessages] = useState(false)
-  const [blurAmount, setBlurAmount] = useState(10)
-  const [blurSpeed, setBlurSpeed] = useState(300)
+  const [blurAmount, setBlurAmount] = useState(() => typeof window !== 'undefined' ? parseInt(localStorage.getItem('blurAmount') || '12') : 12)
+  const [blurSpeed, setBlurSpeed] = useState(() => typeof window !== 'undefined' ? parseInt(localStorage.getItem('blurSpeed') || '400') : 400)
+  const [markedRead, setMarkedRead] = useState(false)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [newMsgCount, setNewMsgCount] = useState(0)
+  const prevMsgLen = useRef(0)
+  const isNearBottom = useRef(true)
 
-  const toggleSecureMode = () => setSecureMode((v) => !v)
-  const updateBlurAmount = (val) => setBlurAmount(val)
-  const updateBlurSpeed = (val) => setBlurSpeed(val)
+  const toggleSecureMode = () => { const next = !secureMode; setSecureMode(next); localStorage.setItem('secureMode', String(next)) }
+  const updateBlurAmount = (val) => { setBlurAmount(val); localStorage.setItem('blurAmount', String(val)) }
+  const updateBlurSpeed = (val) => { setBlurSpeed(val); localStorage.setItem('blurSpeed', String(val)) }
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => {
+    if (messages.length === 0) return
+    const isNew = messages.length > prevMsgLen.current
+    prevMsgLen.current = messages.length
+    if (!markedRead && lastReadRef.current) {
+      lastReadRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setTimeout(() => setMarkedRead(true), 1200)
+    } else if (isNew) {
+      if (isNearBottom.current) {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+        setNewMsgCount(0); setShowScrollBtn(false)
+      } else {
+        setNewMsgCount((c) => c + 1); setShowScrollBtn(true)
+      }
+    }
+  }, [messages])
   useEffect(() => { if (activeUser) setTimeout(() => inputRef.current?.focus(), 100) }, [activeUser])
+  useEffect(() => {
+    setMarkedRead(false); setShowScrollBtn(false)
+    setNewMsgCount(0); prevMsgLen.current = 0; isNearBottom.current = true
+  }, [activeUser])
+  useEffect(() => {
+    const handler = (e) => { if (settingsRef.current && !settingsRef.current.contains(e.target)) setShowSecureSettings(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   const otherLastRead = lastRead?.[activeUser?.uid] || 0
   if (!activeUser || !me) return null
 
