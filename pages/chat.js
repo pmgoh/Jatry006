@@ -319,13 +319,43 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
   const [isHoveringMessages, setIsHoveringMessages] = useState(false)
   const settingsRef = useRef(null)
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => {
+    if (messages.length === 0) return
+    const isNew = messages.length > prevMsgLen.current
+    prevMsgLen.current = messages.length
+    if (!markedRead && lastReadRef.current) {
+      lastReadRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setTimeout(() => setMarkedRead(true), 1200)
+    } else if (isNew) {
+      if (isNearBottom.current) {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+        setNewMsgCount(0); setShowScrollBtn(false)
+      } else {
+        setNewMsgCount((c) => c + 1); setShowScrollBtn(true)
+      }
+    }
+  }, [messages])
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 100) }, [])
 
   useEffect(() => {
     const handler = (e) => { if (settingsRef.current && !settingsRef.current.contains(e.target)) setShowSecureSettings(false) }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // 탭 비활성/창 포커스 잃을 때 lastSeen 저장
+  useEffect(() => {
+    const saveLastSeen = () => {
+      if (document.visibilityState === 'hidden' || !document.hasFocus()) {
+        localStorage.setItem('lastSeen___public__', String(Date.now()))
+      }
+    }
+    document.addEventListener('visibilitychange', saveLastSeen)
+    window.addEventListener('blur', saveLastSeen)
+    return () => {
+      document.removeEventListener('visibilitychange', saveLastSeen)
+      window.removeEventListener('blur', saveLastSeen)
+    }
   }, [])
 
   const toggleSecureMode = () => {
@@ -426,11 +456,39 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
       </div>
 
       {/* 메시지 */}
-      <div className="flex-1 overflow-y-auto py-6"
-        onMouseEnter={() => setIsHoveringMessages(true)}
-        onMouseLeave={() => setIsHoveringMessages(false)}
-        style={{ filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease`, userSelect: secureMode && !isHoveringMessages ? 'none' : 'auto' }}
-      >
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        {showScrollBtn && (
+          <button
+            onClick={() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); setShowScrollBtn(false); setNewMsgCount(0) }}
+            style={{
+              position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)',
+              zIndex: 20, display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', borderRadius: 20,
+              background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)',
+              border: 'none', cursor: 'pointer', color: 'white',
+              fontSize: 12, fontWeight: 600,
+              boxShadow: '0 4px 16px rgba(124,106,247,0.4)',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+              <path d="M12 5v14M5 12l7 7 7-7"/>
+            </svg>
+            새 메시지 {newMsgCount > 0 ? newMsgCount : ''}
+          </button>
+        )}
+        <div
+          ref={scrollContainerRef}
+          className="h-full overflow-y-auto py-6"
+          onMouseEnter={() => setIsHoveringMessages(true)}
+          onMouseLeave={() => setIsHoveringMessages(false)}
+          onScroll={(e) => {
+            const el = e.currentTarget
+            const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+            isNearBottom.current = distFromBottom < 80
+            if (isNearBottom.current) { setShowScrollBtn(false); setNewMsgCount(0) }
+          }}
+          style={{ filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease`, userSelect: secureMode && !isHoveringMessages ? 'none' : 'auto' }}
+        >
         <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 24px' }}>
           {messages.length === 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, textAlign: 'center' }}>
@@ -449,10 +507,22 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
             const prev = messages[i - 1], next = messages[i + 1]
             const isFirst = !prev || prev.sender !== msg.sender
             const isLast = !next || next.sender !== msg.sender
+            const groupLastSeen = typeof window !== 'undefined' ? parseInt(localStorage.getItem('lastSeen___public__') || '0') : 0
+            const showMark = groupLastSeen && !markedRead &&
+              msg.timestamp > groupLastSeen &&
+              (!prev || prev.timestamp <= groupLastSeen)
 
             if (isMe) {
               return (
-                <div key={msg.id} style={{ display: 'flex', justifyContent: 'flex-end', marginTop: isFirst ? 28 : 4 }}>
+                <div key={msg.id}>
+                  {showMark && (
+                    <div ref={lastReadRef} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0 16px', opacity: 0.7 }}>
+                      <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, rgba(124,106,247,0.4))' }} />
+                      <span style={{ fontSize: 11, color: 'rgba(124,106,247,0.7)', whiteSpace: 'nowrap', letterSpacing: '0.03em' }}>여기까지 읽었어요</span>
+                      <div style={{ flex: 1, height: 1, background: 'linear-gradient(270deg, transparent, rgba(124,106,247,0.4))' }} />
+                    </div>
+                  )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: isFirst ? 28 : 4 }}>
                   <div style={{ maxWidth: '62%' }}>
                     <div style={{ padding: '10px 15px', borderRadius: isLast ? '16px 16px 4px 16px' : '16px', background: 'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(79,163,247,0.16))', border: '1px solid rgba(124,106,247,0.25)', fontSize: 15, lineHeight: 1.6, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                       {msg.text}
@@ -464,12 +534,21 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
                     )}
                   </div>
                 </div>
+                </div>
               )
             }
 
             // 상대방 메시지 — AI 스타일
             return (
-              <div key={msg.id} style={{ marginTop: isFirst ? 28 : 4 }}>
+              <div key={msg.id}>
+                {showMark && (
+                  <div ref={lastReadRef} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0 16px', opacity: 0.7 }}>
+                    <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, rgba(124,106,247,0.4))' }} />
+                    <span style={{ fontSize: 11, color: 'rgba(124,106,247,0.7)', whiteSpace: 'nowrap', letterSpacing: '0.03em' }}>여기까지 읽었어요</span>
+                    <div style={{ flex: 1, height: 1, background: 'linear-gradient(270deg, transparent, rgba(124,106,247,0.4))' }} />
+                  </div>
+                )}
+              <div style={{ marginTop: isFirst ? 28 : 4 }}>
                 {isFirst && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                     <Avatar name={msg.senderName || '?'} size={24} />
@@ -481,9 +560,11 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
                 </div>
                 {isLast && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, paddingLeft: 34 }}>{formatTime(msg.timestamp)}</p>}
               </div>
+              </div>
             )
           })}
           <div ref={bottomRef} />
+        </div>
         </div>
       </div>
 
