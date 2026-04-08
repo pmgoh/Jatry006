@@ -485,6 +485,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
           })}
           <div ref={bottomRef} />
         </div>
+        </div>
       </div>
 
       {/* 입력창 */}
