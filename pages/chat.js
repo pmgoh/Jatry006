@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
+
+const APP_VERSION = '1.0'
 import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
@@ -959,6 +961,16 @@ export default function Chat() {
             : <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead}
                 onBack={() => { setMobileView('list'); setActiveUser(null) }} />
         }
+      </div>
+
+      {/* 버전 표시 */}
+      <div style={{
+        position: 'fixed', bottom: 14, right: 16,
+        fontSize: 11, color: 'rgba(255,255,255,0.12)',
+        letterSpacing: '0.04em', userSelect: 'none',
+        zIndex: 10, pointerEvents: 'none',
+      }}>
+        v{APP_VERSION}
       </div>
     </div>
   )

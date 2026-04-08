@@ -1,4 +1,6 @@
 import { useState } from 'react'
+
+const APP_VERSION = '1.0'
 import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
 import {
@@ -14,7 +16,9 @@ function todayStr() {
 }
 
 function fakeEmail(username) {
-  return `${username.toLowerCase().replace(/\s/g,'_')}_${todayStr()}@msng.app`
+  // 닉네임을 charCode 숫자열로 변환 → 한글/특수문자 이메일 오류 방지
+  const safe = Array.from(username).map(c => c.charCodeAt(0)).join('')
+  return `u${safe}_${todayStr()}@msng.app`
 }
 
 function SignupModal({ onClose }) {
@@ -253,6 +257,15 @@ export default function AuthPage() {
             </div>
           </div>
         </div>
+      </div>
+    {/* 버전 표시 */}
+      <div style={{
+        position: 'fixed', bottom: 14, right: 16,
+        fontSize: 11, color: 'var(--muted)',
+        letterSpacing: '0.04em', userSelect: 'none',
+        zIndex: 10,
+      }}>
+        v{APP_VERSION}
       </div>
     </>
   )
