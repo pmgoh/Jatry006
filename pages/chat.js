@@ -2,6 +2,17 @@ import { useEffect, useState, useRef } from 'react'
 
 const APP_VERSION = '1.1'
 
+function formatLastSeen(ts) {
+  if (!ts) return '오프라인'
+  const diff = Date.now() - ts
+  const min = Math.floor(diff / 60000)
+  const hour = Math.floor(diff / 3600000)
+  if (min < 1) return '방금 전'
+  if (min < 60) return `${min}분 전`
+  if (hour < 24) return `${hour}시간 전`
+  return '오프라인'
+}
+
 // 알림 권한 요청
 async function requestNotificationPermission() {
   if (!('Notification' in window)) return false
@@ -228,7 +239,7 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
 
       <div className="px-4 pt-3 pb-2 flex-shrink-0">
         <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>
-          접속 중 {otherUsers.length > 0 ? `· ${otherUsers.length}명` : ''}
+          오늘 · {otherUsers.filter(u => u.online).length}명 온라인
         </p>
       </div>
 
@@ -258,14 +269,23 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
               >
                 <div className="relative">
                   <Avatar name={user.username} size={34} />
-                  <div style={{ position: 'absolute', bottom: -1, right: -1, width: 9, height: 9, borderRadius: '50%', background: '#4ade80', border: '2px solid var(--surface)', boxShadow: '0 0 5px rgba(74,222,128,0.5)' }} />
+                  <div style={{
+                    position: 'absolute', bottom: -1, right: -1,
+                    width: 9, height: 9, borderRadius: '50%',
+                    border: '2px solid var(--surface)',
+                    background: user.online ? '#4ade80' : 'var(--muted)',
+                    boxShadow: user.online ? '0 0 5px rgba(74,222,128,0.5)' : 'none',
+                  }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate leading-none mb-0.5" style={{ color: 'var(--text)', fontWeight: badge > 0 ? 600 : 500 }}>
+                  <p className="text-sm truncate leading-none mb-0.5" style={{
+                    color: user.online ? 'var(--text)' : 'var(--text-dim)',
+                    fontWeight: badge > 0 ? 600 : 500,
+                  }}>
                     {user.username}
                   </p>
                   <p className="text-xs truncate" style={{ color: badge > 0 ? 'rgba(124,106,247,0.9)' : 'var(--muted)', fontWeight: badge > 0 ? 500 : 400 }}>
-                    {badge > 0 ? `${badge}개의 새 메시지` : '온라인'}
+                    {badge > 0 ? `${badge}개의 새 메시지` : user.online ? '온라인' : formatLastSeen(user.lastSeen)}
                   </p>
                 </div>
                 {badge > 0 && (
@@ -1021,8 +1041,8 @@ export default function Chat() {
       // Firebase Presence — 연결 상태를 Firebase 서버가 직접 관리
       onValue(connectedRef, (snap) => {
         if (snap.val() === true) {
-          // 연결되면 online: true, 끊기면 서버가 자동으로 false 처리
           onDisconnect(onlineRef).set(false)
+          onDisconnect(ref(db, `users/${user.uid}/lastSeen`)).set(Date.now())
           set(onlineRef, true)
         }
       })
@@ -1188,7 +1208,10 @@ export default function Chat() {
   }
 
   const handleLogout = async () => {
-    if (me) await set(ref(db, `users/${me.uid}/online`), false)
+    if (me) {
+      await set(ref(db, `users/${me.uid}/online`), false)
+      await set(ref(db, `users/${me.uid}/lastSeen`), Date.now())
+    }
     await signOut(auth)
     router.push('/')
   }
