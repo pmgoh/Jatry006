@@ -431,8 +431,8 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
     const isNew = messages.length > prevMsgLen.current
     prevMsgLen.current = messages.length
     // 상대방이 보낸 새 메시지가 마커 이후에 있을 때만 마커 스크롤
-    const hasUnreadAfterMark = lastReadMark && messages.some(
-      m => m.timestamp > lastReadMark && m.sender !== me?.uid
+    const hasUnreadAfterMark = groupMarkerTs && messages.some(
+      m => m.timestamp > groupMarkerTs && m.sender !== me?.uid
     )
     if (!markedRead && lastReadRef.current && hasUnreadAfterMark) {
       lastReadRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
