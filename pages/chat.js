@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 
-const APP_VERSION = '1.0'
+const APP_VERSION = '1.1'
 import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
 import { onAuthStateChanged, signOut } from 'firebase/auth'

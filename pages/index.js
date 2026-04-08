@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-const APP_VERSION = '1.0'
+const APP_VERSION = '1.1'
 import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
 import {
@@ -33,7 +33,7 @@ function SignupModal({ onClose }) {
     e.preventDefault()
     setError(''); setSuccess('')
     if (username.length < 2) return setError('닉네임은 2자 이상이어야 해요.')
-    if (password.length < 4) return setError('비밀번호는 4자 이상이어야 해요.')
+    if (password.length < 6) return setError('비밀번호는 6자 이상이어야 해요.')
     setLoading(true)
     try {
       const cred = await createUserWithEmailAndPassword(auth, fakeEmail(username), password)
@@ -102,7 +102,7 @@ function SignupModal({ onClose }) {
           <div>
             <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text-dim)' }}>비밀번호</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder="4자 이상" required autoComplete="new-password"
+              placeholder="6자 이상" required autoComplete="new-password"
               className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all duration-200"
               style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
               onFocus={(e) => { e.target.style.borderColor = 'rgba(124,106,247,0.6)'; e.target.style.boxShadow = '0 0 0 3px rgba(124,106,247,0.12)' }}
