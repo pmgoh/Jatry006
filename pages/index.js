@@ -14,7 +14,7 @@ function todayStr() {
 }
 
 function fakeEmail(username) {
-  return `${username.toLowerCase().replace(/\s/g,'_')}_${todayStr()}@msg.local`
+  return `${username.toLowerCase().replace(/\s/g,'_')}_${todayStr()}@msng.app`
 }
 
 function SignupModal({ onClose }) {
@@ -79,7 +79,7 @@ function SignupModal({ onClose }) {
           <div>
             <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text-dim)' }}>닉네임</label>
             <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-              placeholder="오늘 사용할 닉네임" required
+              placeholder="오늘 사용할 닉네임" required autoComplete="username"
               className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all duration-200"
               style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
               onFocus={(e) => { e.target.style.borderColor = 'rgba(124,106,247,0.6)'; e.target.style.boxShadow = '0 0 0 3px rgba(124,106,247,0.12)' }}
@@ -89,7 +89,7 @@ function SignupModal({ onClose }) {
           <div>
             <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text-dim)' }}>비밀번호</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder="4자 이상" required
+              placeholder="4자 이상" required autoComplete="new-password"
               className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all duration-200"
               style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
               onFocus={(e) => { e.target.style.borderColor = 'rgba(124,106,247,0.6)'; e.target.style.boxShadow = '0 0 0 3px rgba(124,106,247,0.12)' }}
@@ -196,7 +196,7 @@ export default function AuthPage() {
               <div>
                 <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text-dim)' }}>닉네임</label>
                 <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-                  placeholder="오늘 사용 중인 닉네임" required
+                  placeholder="오늘 사용 중인 닉네임" required autoComplete="username"
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all duration-200"
                   style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }}
                   onFocus={(e) => { e.target.style.borderColor = 'rgba(124,106,247,0.6)'; e.target.style.boxShadow = '0 0 0 3px rgba(124,106,247,0.12)' }}
@@ -206,7 +206,7 @@ export default function AuthPage() {
               <div>
                 <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text-dim)' }}>비밀번호</label>
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                  placeholder="비밀번호 입력" required
+                  placeholder="비밀번호 입력" required autoComplete="current-password"
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all duration-200"
                   style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }}
                   onFocus={(e) => { e.target.style.borderColor = 'rgba(124,106,247,0.6)'; e.target.style.boxShadow = '0 0 0 3px rgba(124,106,247,0.12)' }}

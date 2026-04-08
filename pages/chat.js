@@ -134,7 +134,7 @@ function MyMessageBubble({ msg, isFirst, isLast, otherLastRead }) {
   )
 }
 
-function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers, activeGroup, onSelectGroup, groupUnread }) {
+function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers, activeGroup, onSelectGroup, groupUnread, onClose }) {
   const otherUsers = users.filter((u) => u.uid !== me?.uid)
   const meUser = users.find((u) => u.uid === me?.uid)
 
@@ -150,9 +150,19 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
           <p className="text-xs font-semibold leading-none" style={{ color: 'var(--text)' }}>Jatry 메신저</p>
           <p className="mt-0.5" style={{ color: 'var(--muted)', fontSize: 10 }}>AI 프로젝트 06번째</p>
         </div>
+        {onClose && (
+          <button onClick={onClose}
+            style={{ width: 26, height: 26, borderRadius: 7, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = 'var(--text)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        )}
       </div>
 
-      {/* 공용 채팅방 */}
+      {/* All */}
       <div className="px-2 pt-3 pb-1 flex-shrink-0">
         <button onClick={() => onSelectGroup()}
           className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl transition-all duration-150 text-left"
@@ -177,10 +187,10 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm truncate leading-none mb-0.5" style={{ color: 'var(--text)', fontWeight: groupUnread > 0 ? 600 : 500 }}>
-              공용 채팅방
+              All
             </p>
             <p className="text-xs" style={{ color: groupUnread > 0 ? 'rgba(124,106,247,0.9)' : 'var(--muted)', fontWeight: groupUnread > 0 ? 500 : 400 }}>
-              {groupUnread > 0 ? `${groupUnread}개의 새 메시지` : '모두에게 열린 공간'}
+              {groupUnread > 0 ? `${groupUnread}개의 새 메시지` : 'Everyone's here'}
             </p>
           </div>
           {groupUnread > 0 && (
@@ -328,8 +338,8 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
           </svg>
         </div>
         <div className="flex-1">
-          <p className="text-sm font-medium leading-none mb-0.5" style={{ color: 'var(--text)' }}>공용 채팅방</p>
-          <p className="text-xs" style={{ color: 'var(--text-dim)' }}>모두에게 열린 공간</p>
+          <p className="text-sm font-medium leading-none mb-0.5" style={{ color: 'var(--text)' }}>All</p>
+          <p className="text-xs" style={{ color: 'var(--text-dim)' }}>Everyone's here</p>
         </div>
 
         {/* 보안 모드 */}
@@ -337,10 +347,10 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
           <button onClick={toggleSecureMode} style={{ width: 36, height: 20, borderRadius: 10, padding: 2, cursor: 'pointer', background: secureMode ? 'linear-gradient(135deg, #7c6af7, #4fa3f7)' : 'var(--border)', border: 'none', transition: 'background 0.2s ease', position: 'relative', flexShrink: 0 }}>
             <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'white', position: 'absolute', top: 2, transition: 'left 0.2s ease', left: secureMode ? 18 : 2, boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
           </button>
-          <button onClick={() => setShowSecureSettings(v => !v)} className="p-1 rounded-lg transition-colors" style={{ color: showSecureSettings ? '#7c6af7' : 'var(--muted)' }}
-            onMouseEnter={(e) => e.currentTarget.style.color = '#7c6af7'}
-            onMouseLeave={(e) => { if (!showSecureSettings) e.currentTarget.style.color = 'var(--muted)' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <button onClick={() => setShowSecureSettings(v => !v)} className="p-1.5 rounded-lg transition-colors" style={{ color: showSecureSettings ? '#7c6af7' : 'var(--text-dim)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#7c6af7'; e.currentTarget.style.background = 'rgba(124,106,247,0.08)' }}
+            onMouseLeave={(e) => { if (!showSecureSettings) { e.currentTarget.style.color = 'var(--text-dim)'; e.currentTarget.style.background = 'transparent' } }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="3"/>
               <path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41"/>
             </svg>
@@ -378,7 +388,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
           <button onClick={onClose} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = 'var(--text)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         )}
       </div>
@@ -398,7 +408,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
                   <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
                 </svg>
               </div>
-              <p style={{ fontSize: 14, color: 'var(--text-dim)', marginBottom: 4 }}>공용 채팅방</p>
+              <p style={{ fontSize: 14, color: 'var(--text-dim)', marginBottom: 4 }}>All</p>
               <p style={{ fontSize: 12, color: 'var(--muted)' }}>첫 메시지를 보내보세요</p>
             </div>
           )}
@@ -448,8 +458,8 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
       {/* 입력창 */}
       <div className="px-4 pb-4 pt-2 flex-shrink-0">
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
-          <div className="glow-border flex items-end gap-2.5 px-4 py-3 rounded-2xl" style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}>
-            <div className="flex-shrink-0 pb-0.5">
+          <div className="glow-border flex items-center gap-2.5 px-4 py-3 rounded-2xl" style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}>
+            <div className="flex-shrink-0">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--muted)' }}>
                 <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" stroke="currentColor" strokeWidth="1.5"/>
                 <path d="M8 13s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -459,7 +469,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
             <textarea ref={inputRef} value={input}
               onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
               onKeyDown={handleKeyDown}
-              placeholder="공용 채팅방에 메시지 보내기..."
+              placeholder="All에 메시지 보내기..."
               rows={1} className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
               style={{ color: 'var(--text)', caretColor: '#7c6af7', maxHeight: 120 }}
             />
@@ -638,7 +648,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
             onMouseEnter={(e) => { e.currentTarget.style.color = '#7c6af7' }}
             onMouseLeave={(e) => { if (!showSecureSettings) e.currentTarget.style.color = 'var(--muted)' }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="3"/>
               <path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41"/>
             </svg>
@@ -655,7 +665,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
             title="채팅 닫기"
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = 'var(--text)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12"/>
             </svg>
           </button>
@@ -697,9 +707,9 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose }) {
       {/* 입력창 */}
       <div className="px-4 pb-4 pt-2 flex-shrink-0">
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
-        <div className="glow-border flex items-end gap-2.5 px-4 py-3 rounded-2xl"
+        <div className="glow-border flex items-center gap-2.5 px-4 py-3 rounded-2xl"
           style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}>
-          <div className="flex-shrink-0 pb-0.5">
+          <div className="flex-shrink-0">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--muted)' }}>
               <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" stroke="currentColor" strokeWidth="1.5"/>
               <path d="M8 13s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -742,6 +752,7 @@ export default function Chat() {
   const [users, setUsers] = useState([])
   const [activeUser, setActiveUser] = useState(null)
   const [activeGroup, setActiveGroup] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [messages, setMessages] = useState([])
   const [groupMessages, setGroupMessages] = useState([])
   const [unread, setUnread] = useState({})
@@ -807,7 +818,7 @@ export default function Chat() {
     return () => { unsub(); unsubLastRead() }
   }, [me, activeUser])
 
-  // 공용 채팅방 리스너
+  // All 리스너
   useEffect(() => {
     if (!me) return
     const unsub = onValue(ref(db, 'rooms/__public__/messages'), (snap) => {
@@ -823,7 +834,7 @@ export default function Chat() {
         setGroupUnread(0)
       }
     })
-    // 공용방 lastRead 기반 미읽음
+    // All방 lastRead 기반 미읽음
     let myGroupLastRead = 0
     const unsubLR = onValue(ref(db, `rooms/__public__/lastRead/${me.uid}`), (snap) => {
       myGroupLastRead = snap.val() || 0
@@ -832,7 +843,7 @@ export default function Chat() {
     return () => { unsub(); unsubLR() }
   }, [me])
 
-  // 공용방 미읽음 카운트
+  // All방 미읽음 카운트
   useEffect(() => {
     if (!me) return
     const unsub = onValue(ref(db, 'rooms/__public__/messages'), (snap) => {
@@ -906,10 +917,29 @@ export default function Chat() {
   return (
     <div className="h-screen overflow-hidden" style={{ background: 'var(--night)' }}>
       <div className="hidden md:flex h-full">
-        <div style={{ width: 260, flexShrink: 0 }}>
+        {/* 사이드바 토글 버튼 — 닫혔을때만 표시 */}
+        {!sidebarOpen && (
+          <div style={{ width: 40, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 12, background: 'var(--surface)', borderRight: '1px solid var(--border)' }}>
+            <button onClick={() => setSidebarOpen(true)}
+              style={{ width: 28, height: 28, borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = 'var(--text)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </button>
+          </div>
+        )}
+        <div style={{
+          width: sidebarOpen ? 260 : 0,
+          flexShrink: 0,
+          overflow: 'hidden',
+          transition: 'width 0.25s ease',
+        }}>
           <Sidebar me={me} users={users} activeUser={activeUser} unread={unread}
             onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers}
-            activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread} />
+            activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread}
+            onClose={() => setSidebarOpen(false)} />
         </div>
         {activeGroup
           ? <GroupChatPanel me={me} messages={groupMessages} lastGroupRead={lastGroupRead} onClose={handleCloseChat} />
