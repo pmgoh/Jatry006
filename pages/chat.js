@@ -134,7 +134,7 @@ function MyMessageBubble({ msg, isFirst, isLast, otherLastRead }) {
   )
 }
 
-function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers }) {
+function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers, activeGroup, onSelectGroup, groupUnread }) {
   const otherUsers = users.filter((u) => u.uid !== me?.uid)
   const meUser = users.find((u) => u.uid === me?.uid)
 
@@ -152,7 +152,46 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
         </div>
       </div>
 
-      <div className="px-4 pt-4 pb-2 flex-shrink-0">
+      {/* 공용 채팅방 */}
+      <div className="px-2 pt-3 pb-1 flex-shrink-0">
+        <button onClick={() => onSelectGroup()}
+          className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl transition-all duration-150 text-left"
+          style={{
+            background: activeGroup ? 'rgba(124,106,247,0.12)' : 'transparent',
+            border: activeGroup ? '1px solid rgba(124,106,247,0.25)' : '1px solid rgba(255,255,255,0.04)',
+          }}
+          onMouseEnter={(e) => { if (!activeGroup) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+          onMouseLeave={(e) => { if (!activeGroup) e.currentTarget.style.background = 'transparent' }}
+        >
+          <div style={{
+            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+            background: 'linear-gradient(135deg, rgba(124,106,247,0.25), rgba(79,163,247,0.2))',
+            border: '1px solid rgba(124,106,247,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7c6af7" strokeWidth="2">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm truncate leading-none mb-0.5" style={{ color: 'var(--text)', fontWeight: groupUnread > 0 ? 600 : 500 }}>
+              공용 채팅방
+            </p>
+            <p className="text-xs" style={{ color: groupUnread > 0 ? 'rgba(124,106,247,0.9)' : 'var(--muted)', fontWeight: groupUnread > 0 ? 500 : 400 }}>
+              {groupUnread > 0 ? `${groupUnread}개의 새 메시지` : '모두에게 열린 공간'}
+            </p>
+          </div>
+          {groupUnread > 0 && (
+            <div style={{ minWidth: 18, height: 18, borderRadius: 9, padding: '0 5px', background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white' }}>
+              {groupUnread > 9 ? '9+' : groupUnread}
+            </div>
+          )}
+        </button>
+      </div>
+
+      <div className="px-4 pt-3 pb-2 flex-shrink-0">
         <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>
           접속 중 {otherUsers.length > 0 ? `· ${otherUsers.length}명` : ''}
         </p>
@@ -222,6 +261,221 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
         </div>
       )}
     </aside>
+  )
+}
+
+function GroupChatPanel({ me, messages, lastGroupRead, onBack, onClose }) {
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const bottomRef = useRef(null)
+  const inputRef = useRef(null)
+
+  const [secureMode, setSecureMode] = useState(() => typeof window !== 'undefined' && localStorage.getItem('secureMode') === 'true')
+  const [showSecureSettings, setShowSecureSettings] = useState(false)
+  const [blurAmount, setBlurAmount] = useState(() => typeof window !== 'undefined' ? parseInt(localStorage.getItem('blurAmount') || '12') : 12)
+  const [blurSpeed, setBlurSpeed] = useState(() => typeof window !== 'undefined' ? parseInt(localStorage.getItem('blurSpeed') || '400') : 400)
+  const [isHoveringMessages, setIsHoveringMessages] = useState(false)
+  const settingsRef = useRef(null)
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 100) }, [])
+
+  useEffect(() => {
+    const handler = (e) => { if (settingsRef.current && !settingsRef.current.contains(e.target)) setShowSecureSettings(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const toggleSecureMode = () => {
+    const next = !secureMode; setSecureMode(next); localStorage.setItem('secureMode', String(next))
+  }
+  const updateBlurAmount = (val) => { setBlurAmount(val); localStorage.setItem('blurAmount', String(val)) }
+  const updateBlurSpeed = (val) => { setBlurSpeed(val); localStorage.setItem('blurSpeed', String(val)) }
+
+  const handleSend = async () => {
+    if (!input.trim() || !me || sending) return
+    const text = input.trim(); setInput(''); setSending(true)
+    try {
+      await push(ref(db, 'rooms/__public__/messages'), {
+        sender: me.uid, senderName: me.displayName,
+        text, timestamp: Date.now(),
+      })
+    } finally { setSending(false); inputRef.current?.focus() }
+  }
+
+  const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }
+
+  if (!me) return null
+
+  return (
+    <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--night)' }}>
+      {/* 헤더 */}
+      <div className="flex items-center gap-3 px-4 py-3.5 flex-shrink-0" style={{
+        borderBottom: '1px solid var(--border)',
+        background: 'rgba(10,11,15,0.85)',
+      }}>
+        {onBack && (
+          <button onClick={onBack} className="p-1.5 rounded-lg transition-colors md:hidden" style={{ color: 'var(--text-dim)' }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--panel)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+        )}
+        <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(135deg, rgba(124,106,247,0.25), rgba(79,163,247,0.2))', border: '1px solid rgba(124,106,247,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7c6af7" strokeWidth="2">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+          </svg>
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium leading-none mb-0.5" style={{ color: 'var(--text)' }}>공용 채팅방</p>
+          <p className="text-xs" style={{ color: 'var(--text-dim)' }}>모두에게 열린 공간</p>
+        </div>
+
+        {/* 보안 모드 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }} ref={settingsRef}>
+          <button onClick={toggleSecureMode} style={{ width: 36, height: 20, borderRadius: 10, padding: 2, cursor: 'pointer', background: secureMode ? 'linear-gradient(135deg, #7c6af7, #4fa3f7)' : 'var(--border)', border: 'none', transition: 'background 0.2s ease', position: 'relative', flexShrink: 0 }}>
+            <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'white', position: 'absolute', top: 2, transition: 'left 0.2s ease', left: secureMode ? 18 : 2, boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+          </button>
+          <button onClick={() => setShowSecureSettings(v => !v)} className="p-1 rounded-lg transition-colors" style={{ color: showSecureSettings ? '#7c6af7' : 'var(--muted)' }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#7c6af7'}
+            onMouseLeave={(e) => { if (!showSecureSettings) e.currentTarget.style.color = 'var(--muted)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41"/>
+            </svg>
+          </button>
+          {showSecureSettings && (
+            <div style={{ position: 'fixed', top: 60, right: 60, width: 220, padding: '14px 16px', background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 200 }}>
+              <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-dim)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>보안 설정</p>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>블러 강도</span>
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>{blurAmount}px</span>
+                </div>
+                <input type="range" min={4} max={24} value={blurAmount} onChange={(e) => updateBlurAmount(Number(e.target.value))} style={{ width: '100%', accentColor: '#7c6af7', cursor: 'pointer', height: 4 }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>약하게</span>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>강하게</span>
+                </div>
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>블러 속도</span>
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>{blurSpeed}ms</span>
+                </div>
+                <input type="range" min={100} max={1000} step={50} value={blurSpeed} onChange={(e) => updateBlurSpeed(Number(e.target.value))} style={{ width: '100%', accentColor: '#7c6af7', cursor: 'pointer', height: 4 }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>빠르게</span>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>느리게</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {onClose && (
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = 'var(--text)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        )}
+      </div>
+
+      {/* 메시지 */}
+      <div className="flex-1 overflow-y-auto py-6"
+        onMouseEnter={() => setIsHoveringMessages(true)}
+        onMouseLeave={() => setIsHoveringMessages(false)}
+        style={{ filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease`, userSelect: secureMode && !isHoveringMessages ? 'none' : 'auto' }}
+      >
+        <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 24px' }}>
+          {messages.length === 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, textAlign: 'center' }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--panel)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.5">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+                </svg>
+              </div>
+              <p style={{ fontSize: 14, color: 'var(--text-dim)', marginBottom: 4 }}>공용 채팅방</p>
+              <p style={{ fontSize: 12, color: 'var(--muted)' }}>첫 메시지를 보내보세요</p>
+            </div>
+          )}
+          {messages.map((msg, i) => {
+            const isMe = msg.sender === me?.uid
+            const prev = messages[i - 1], next = messages[i + 1]
+            const isFirst = !prev || prev.sender !== msg.sender
+            const isLast = !next || next.sender !== msg.sender
+
+            if (isMe) {
+              return (
+                <div key={msg.id} style={{ display: 'flex', justifyContent: 'flex-end', marginTop: isFirst ? 28 : 4 }}>
+                  <div style={{ maxWidth: '62%' }}>
+                    <div style={{ padding: '10px 15px', borderRadius: isLast ? '16px 16px 4px 16px' : '16px', background: 'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(79,163,247,0.16))', border: '1px solid rgba(124,106,247,0.25)', fontSize: 15, lineHeight: 1.6, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                      {msg.text}
+                    </div>
+                    {isLast && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, paddingRight: 2, gap: 3 }}>
+                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{formatTime(msg.timestamp)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            }
+
+            // 상대방 메시지 — AI 스타일
+            return (
+              <div key={msg.id} style={{ marginTop: isFirst ? 28 : 4 }}>
+                {isFirst && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <Avatar name={msg.senderName || '?'} size={24} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.01em' }}>{msg.senderName}</span>
+                  </div>
+                )}
+                <div style={{ paddingLeft: 34, fontSize: 15, lineHeight: 1.7, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                  {msg.text}
+                </div>
+                {isLast && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, paddingLeft: 34 }}>{formatTime(msg.timestamp)}</p>}
+              </div>
+            )
+          })}
+          <div ref={bottomRef} />
+        </div>
+      </div>
+
+      {/* 입력창 */}
+      <div className="px-4 pb-4 pt-2 flex-shrink-0">
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          <div className="glow-border flex items-end gap-2.5 px-4 py-3 rounded-2xl" style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}>
+            <div className="flex-shrink-0 pb-0.5">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--muted)' }}>
+                <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" stroke="currentColor" strokeWidth="1.5"/>
+                <path d="M8 13s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <circle cx="9" cy="9.5" r="1" fill="currentColor"/><circle cx="15" cy="9.5" r="1" fill="currentColor"/>
+              </svg>
+            </div>
+            <textarea ref={inputRef} value={input}
+              onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
+              onKeyDown={handleKeyDown}
+              placeholder="공용 채팅방에 메시지 보내기..."
+              rows={1} className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
+              style={{ color: 'var(--text)', caretColor: '#7c6af7', maxHeight: 120 }}
+            />
+            <button onClick={handleSend} disabled={!input.trim() || sending}
+              className="send-btn flex-shrink-0 rounded-xl flex items-center justify-center"
+              style={{ width: 32, height: 32, opacity: input.trim() ? 1 : 0.3, cursor: input.trim() ? 'pointer' : 'not-allowed' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
+                <path d="M22 2L15 22 11 13 2 9l20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+          <p className="text-center mt-1.5 hidden md:block" style={{ color: 'var(--muted)', fontSize: 11 }}>Enter 전송 · Shift+Enter 줄바꿈</p>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -487,15 +741,21 @@ export default function Chat() {
   const [me, setMe] = useState(null)
   const [users, setUsers] = useState([])
   const [activeUser, setActiveUser] = useState(null)
+  const [activeGroup, setActiveGroup] = useState(false)
   const [messages, setMessages] = useState([])
+  const [groupMessages, setGroupMessages] = useState([])
   const [unread, setUnread] = useState({})
-  const [lastRead, setLastRead] = useState({}) // { [otherUid]: timestamp }
+  const [groupUnread, setGroupUnread] = useState(0)
+  const [lastRead, setLastRead] = useState({})
+  const [lastGroupRead, setLastGroupRead] = useState(0)
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [mobileView, setMobileView] = useState('list')
   const activeUserRef = useRef(null)
+  const activeGroupRef = useRef(false)
   const meRef = useRef(null)
 
   useEffect(() => { activeUserRef.current = activeUser }, [activeUser])
+  useEffect(() => { activeGroupRef.current = activeGroup }, [activeGroup])
   useEffect(() => { meRef.current = me }, [me])
 
   useEffect(() => {
@@ -547,6 +807,45 @@ export default function Chat() {
     return () => { unsub(); unsubLastRead() }
   }, [me, activeUser])
 
+  // 공용 채팅방 리스너
+  useEffect(() => {
+    if (!me) return
+    const unsub = onValue(ref(db, 'rooms/__public__/messages'), (snap) => {
+      const data = snap.val()
+      if (!data) { setGroupMessages([]); return }
+      const all = Object.entries(data)
+        .map(([id, v]) => ({ id, ...v }))
+        .filter((m) => m.timestamp && isSameDay(m.timestamp))
+        .sort((a, b) => a.timestamp - b.timestamp)
+      setGroupMessages(all)
+      if (activeGroupRef.current) {
+        set(ref(db, `rooms/__public__/lastRead/${me.uid}`), Date.now())
+        setGroupUnread(0)
+      }
+    })
+    // 공용방 lastRead 기반 미읽음
+    let myGroupLastRead = 0
+    const unsubLR = onValue(ref(db, `rooms/__public__/lastRead/${me.uid}`), (snap) => {
+      myGroupLastRead = snap.val() || 0
+      setLastGroupRead(myGroupLastRead)
+    })
+    return () => { unsub(); unsubLR() }
+  }, [me])
+
+  // 공용방 미읽음 카운트
+  useEffect(() => {
+    if (!me) return
+    const unsub = onValue(ref(db, 'rooms/__public__/messages'), (snap) => {
+      const data = snap.val()
+      if (!data || activeGroupRef.current) return
+      const count = Object.values(data).filter(
+        (m) => m.sender !== me.uid && m.timestamp > lastGroupRead && isSameDay(m.timestamp)
+      ).length
+      setGroupUnread(count)
+    })
+    return () => unsub()
+  }, [me, lastGroupRead])
+
   // 전체 미읽음 카운트 — lastRead 기반
   useEffect(() => {
     if (!me || users.length === 0) return
@@ -577,13 +876,24 @@ export default function Chat() {
 
   const handleSelectUser = (user) => {
     setActiveUser(user)
+    setActiveGroup(false)
     setMessages([])
     setUnread((prev) => ({ ...prev, [user.uid]: 0 }))
     setMobileView('chat')
   }
 
+  const handleSelectGroup = () => {
+    setActiveGroup(true)
+    setActiveUser(null)
+    setMessages([])
+    setGroupUnread(0)
+    setMobileView('chat')
+    if (me) set(ref(db, `rooms/__public__/lastRead/${me.uid}`), Date.now())
+  }
+
   const handleCloseChat = () => {
     setActiveUser(null)
+    setActiveGroup(false)
     setMessages([])
   }
 
@@ -598,19 +908,26 @@ export default function Chat() {
       <div className="hidden md:flex h-full">
         <div style={{ width: 260, flexShrink: 0 }}>
           <Sidebar me={me} users={users} activeUser={activeUser} unread={unread}
-            onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers} />
+            onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers}
+            activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread} />
         </div>
-        {activeUser
-          ? <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead} onClose={handleCloseChat} />
-          : <EmptyState />
+        {activeGroup
+          ? <GroupChatPanel me={me} messages={groupMessages} lastGroupRead={lastGroupRead} onClose={handleCloseChat} />
+          : activeUser
+            ? <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead} onClose={handleCloseChat} />
+            : <EmptyState />
         }
       </div>
       <div className="flex md:hidden h-full flex-col">
         {mobileView === 'list'
           ? <Sidebar me={me} users={users} activeUser={activeUser} unread={unread}
-              onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers} />
-          : <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead}
-              onBack={() => { setMobileView('list'); setActiveUser(null) }} />
+              onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers}
+              activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread} />
+          : activeGroup
+            ? <GroupChatPanel me={me} messages={groupMessages} lastGroupRead={lastGroupRead}
+                onBack={() => { setMobileView('list'); setActiveGroup(false) }} />
+            : <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead}
+                onBack={() => { setMobileView('list'); setActiveUser(null) }} />
         }
       </div>
     </div>
