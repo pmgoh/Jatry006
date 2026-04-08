@@ -41,10 +41,19 @@ function SignupModal({ onClose }) {
       setSuccess('준비됐어요!')
       setTimeout(() => router.push('/chat'), 500)
     } catch (err) {
+      console.error('Signup error:', err.code, err.message)
       if (err.code === 'auth/email-already-in-use') {
         setError('오늘 이미 사용 중인 닉네임이에요.')
+      } else if (err.code === 'auth/invalid-email') {
+        setError('닉네임에 특수문자를 사용할 수 없어요.')
+      } else if (err.code === 'auth/weak-password') {
+        setError('비밀번호는 6자 이상이어야 해요.')
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('네트워크 오류가 발생했어요. 인터넷 연결을 확인해주세요.')
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('잠시 후 다시 시도해주세요. (요청이 너무 많아요)')
       } else {
-        setError('오류가 발생했어요. 다시 시도해주세요.')
+        setError(`오류가 발생했어요. (${err.code || 'unknown'})`)
       }
     } finally {
       setLoading(false)
@@ -130,7 +139,14 @@ export default function AuthPage() {
       setSuccess('입장!')
       setTimeout(() => router.push('/chat'), 400)
     } catch (err) {
-      setError('닉네임 또는 비밀번호가 올바르지 않아요. 오늘 만든 계정인지 확인해주세요.')
+      console.error('Login error:', err.code, err.message)
+      if (err.code === 'auth/network-request-failed') {
+        setError('네트워크 오류가 발생했어요. 인터넷 연결을 확인해주세요.')
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('잠시 후 다시 시도해주세요. (요청이 너무 많아요)')
+      } else {
+        setError('닉네임 또는 비밀번호가 올바르지 않아요. 오늘 만든 계정인지 확인해주세요.')
+      }
     } finally {
       setLoading(false)
     }
