@@ -15,11 +15,12 @@ async function requestNotificationPermission() {
 function sendSilentNotification() {
   if (!('Notification' in window)) return
   if (Notification.permission !== 'granted') return
-  const n = new Notification('', {
+  const n = new Notification(' ', {
     icon: '/favicon.svg',
     badge: '/favicon.svg',
+    body: ' ',
     silent: true,
-    tag: 'msng-new-msg', // 같은 tag면 쌓이지 않고 교체
+    tag: 'msng-new-msg',
   })
   setTimeout(() => n.close(), 2500)
 }
@@ -919,11 +920,13 @@ export default function Chat() {
         const count = Object.values(data).filter(
           (m) => m.sender !== me.uid && m.timestamp > myLastRead && isSameDay(m.timestamp)
         ).length
+        // side effect는 state updater 밖에서
         setUnread((prev) => {
-          // 이전보다 늘었을 때만 알림
           if (count > (prev[u.uid] || 0)) {
-            const settings = JSON.parse(localStorage.getItem('notifySettings') || '{}')
-            if (settings[u.uid] !== false) sendSilentNotification()
+            setTimeout(() => {
+              const settings = JSON.parse(localStorage.getItem('notifySettings') || '{}')
+              if (settings[u.uid] !== false) sendSilentNotification()
+            }, 0)
           }
           return { ...prev, [u.uid]: count }
         })
