@@ -1004,9 +1004,9 @@ export default function Chat() {
     const total = Object.values(unread).reduce((a, b) => a + (Number(b) || 0), 0) + (Number(groupUnread) || 0)
     totalUnreadRef.current = total
     if (total > 0) {
-      document.title = `(${total}) Jatry 메신저`
+      document.title = `(${total}) Jatry`
     } else {
-      document.title = 'Jatry 메신저'
+      document.title = 'Jatry'
     }
   }, [unread, groupUnread])
 
@@ -1016,12 +1016,23 @@ export default function Chat() {
       if (!user) { router.push('/'); return }
       setMe(user)
       const onlineRef = ref(db, `users/${user.uid}/online`)
-      await set(onlineRef, true)
-      onDisconnect(onlineRef).set(false)
+      const connectedRef = ref(db, '.info/connected')
+
+      // Firebase Presence — 연결 상태를 Firebase 서버가 직접 관리
+      onValue(connectedRef, (snap) => {
+        if (snap.val() === true) {
+          // 연결되면 online: true, 끊기면 서버가 자동으로 false 처리
+          onDisconnect(onlineRef).set(false)
+          set(onlineRef, true)
+        }
+      })
+
       unsubUsers = onValue(ref(db, 'users'), (snap) => {
         const data = snap.val()
         if (!data) { setUsers([]); setLoadingUsers(false); return }
-        setUsers(Object.values(data).filter((u) => u.online && u.username))
+        // 빈 배열 깜빡임 방지 — 유저가 있을 때만 업데이트
+        const list = Object.values(data).filter((u) => u.online && u.username)
+        setUsers(list)
         setLoadingUsers(false)
       })
     })
