@@ -264,11 +264,10 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
       const diff = midnight - now
       const h = Math.floor(diff / 3600000)
       const m = Math.floor((diff % 3600000) / 60000)
-      const s = Math.floor((diff % 60000) / 1000)
-      setCountdown(`${h}시간 ${m}분 ${s}초`)
+      setCountdown(h > 0 ? `${h}시간 ${m}분` : `${m}분`)
     }
     tick()
-    const id = setInterval(tick, 1000)
+    const id = setInterval(tick, 60000)
     return () => clearInterval(id)
   }, [])
 
@@ -431,9 +430,16 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
     if (messages.length === 0) return
     const isNew = messages.length > prevMsgLen.current
     prevMsgLen.current = messages.length
-    if (!markedRead && lastReadRef.current) {
+    // 상대방이 보낸 새 메시지가 마커 이후에 있을 때만 마커 스크롤
+    const hasUnreadAfterMark = lastReadMark && messages.some(
+      m => m.timestamp > lastReadMark && m.sender !== me?.uid
+    )
+    if (!markedRead && lastReadRef.current && hasUnreadAfterMark) {
       lastReadRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
       setTimeout(() => setMarkedRead(true), 800)
+    } else if (!markedRead) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      setMarkedRead(true)
     } else if (isNew) {
       if (isNearBottom.current) {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -618,7 +624,8 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
             const isLast = !next || next.sender !== msg.sender
             const showMark = groupMarkerTs && !markedRead &&
               msg.timestamp > groupMarkerTs &&
-              (!prev || prev.timestamp <= groupMarkerTs)
+              msg.sender !== me?.uid && msg.type !== 'system' &&
+              (!prev || prev.timestamp <= groupMarkerTs || prev.sender === me?.uid)
 
             // 시스템 메시지
             if (msg.type === 'system') {
@@ -761,9 +768,16 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
     if (messages.length === 0) return
     const isNew = messages.length > prevMsgLen.current
     prevMsgLen.current = messages.length
-    if (!markedRead && lastReadRef.current) {
+    // 상대방이 보낸 새 메시지가 마커 이후에 있을 때만 마커 스크롤
+    const hasUnreadAfterMark = lastReadMark && messages.some(
+      m => m.timestamp > lastReadMark && m.sender !== me?.uid
+    )
+    if (!markedRead && lastReadRef.current && hasUnreadAfterMark) {
       lastReadRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
       setTimeout(() => setMarkedRead(true), 800)
+    } else if (!markedRead) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      setMarkedRead(true)
     } else if (isNew) {
       if (isNearBottom.current) {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -1029,7 +1043,8 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
             // 마지막 읽은 위치 구분선 — lastReadMark 이후 첫 번째 메시지 앞에
             const showMark = lastReadMark && !markedRead &&
               msg.timestamp > lastReadMark &&
-              (!prev || prev.timestamp <= lastReadMark)
+              msg.sender !== me?.uid &&
+              (!prev || prev.timestamp <= lastReadMark || prev.sender === me?.uid)
 
             return (
               <div key={msg.id}>
@@ -1305,10 +1320,12 @@ export default function Chat() {
   }, [me, users])
 
   const handleSelectUser = (user) => {
-    // 이전 채팅 나가는 시간 저장
     if (activeUserRef.current) {
       localStorage.setItem(`lastSeen_${activeUserRef.current.uid}`, String(Date.now()))
     }
+    // ref를 먼저 동기 업데이트 — 리스너가 즉시 올바른 값 참조하도록
+    activeUserRef.current = user
+    activeGroupRef.current = false
     setActiveUser(user)
     setActiveGroup(false)
     setMessages([])
@@ -1320,6 +1337,8 @@ export default function Chat() {
     if (activeUserRef.current) {
       localStorage.setItem(`lastSeen_${activeUserRef.current.uid}`, String(Date.now()))
     }
+    activeUserRef.current = null
+    activeGroupRef.current = true
     // 진입 전 lastSeen을 markerTs로 보존 후, lastSeen을 now로 업데이트
     // → 다음 진입 시 이 시점 이후 메시지만 마커 표시
     const prevLastSeen = parseInt(localStorage.getItem('lastSeen___public__') || '0')
@@ -1340,6 +1359,8 @@ export default function Chat() {
     if (activeGroupRef.current) {
       localStorage.setItem('lastSeen___public__', String(Date.now()))
     }
+    activeUserRef.current = null
+    activeGroupRef.current = false
     setActiveUser(null)
     setActiveGroup(false)
     setMessages([])
