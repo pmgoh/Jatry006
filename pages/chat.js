@@ -526,7 +526,6 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
 
   const handleSend = async () => {
     if (!input.trim() || !me || sending) return
-    }
     const text = input.trim(); setInput(''); setSending(true)
     try {
       await push(ref(db, 'rooms/__public__/messages'), {
