@@ -618,10 +618,6 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
         )}
       </div>
 
-      {/* 메시지+입력 블러 래퍼 */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease`, userSelect: secureMode && !isHoveringMessages ? 'none' : 'auto' }}
-        onMouseEnter={() => setIsHoveringMessages(true)}
-        onMouseLeave={() => setIsHoveringMessages(false)}>
       {/* 메시지 */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {showScrollBtn && (
@@ -749,7 +745,10 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
       </div>
 
       {/* 입력창 */}
-      <div className="px-4 pb-4 pt-2 flex-shrink-0">
+      <div className="px-4 pb-4 pt-2 flex-shrink-0"
+        onMouseEnter={() => setIsHoveringMessages(true)}
+        onMouseLeave={() => setIsHoveringMessages(false)}
+        style={{ filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease` }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
           <div className="glow-border flex items-center gap-2.5 px-4 py-3 rounded-2xl" style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}>
             <div className="flex-shrink-0">
