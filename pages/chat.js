@@ -64,37 +64,16 @@ async function requestNotificationPermission() {
 }
 
 function sendSilentNotification() {
-  // OS 알림 시도
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      const n = new Notification(' ', {
-        icon: '/favicon.svg',
-        badge: '/favicon.svg',
+      const n = new Notification('💡', {
         silent: true,
         requireInteraction: false,
         tag: 'msng-msg',
       })
       setTimeout(() => n.close(), 2000)
-      return
     } catch(e) {}
   }
-  // fallback: 인앱 토스트
-  const existing = document.getElementById('msng-toast')
-  if (existing) { clearTimeout(existing._timer); existing.remove() }
-  const toast = document.createElement('div')
-  toast.id = 'msng-toast'
-  toast.textContent = '💡'
-  Object.assign(toast.style, {
-    position: 'fixed', bottom: '40px', right: '20px',
-    fontSize: '20px', zIndex: '9999', opacity: '0',
-    transition: 'opacity 0.3s ease', pointerEvents: 'none',
-  })
-  document.body.appendChild(toast)
-  requestAnimationFrame(() => { toast.style.opacity = '1' })
-  toast._timer = setTimeout(() => {
-    toast.style.opacity = '0'
-    setTimeout(() => toast.remove(), 300)
-  }, 2000)
 }
 
 function formatTime(ts) {
