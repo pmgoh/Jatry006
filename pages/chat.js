@@ -1261,7 +1261,7 @@ export default function Chat() {
       const all = Object.entries(data)
         .map(([id, v]) => ({ id, ...v }))
         .filter((m) => m.timestamp && isSameDay(m.timestamp))
-        .sort((a, b) => a.timestamp - b.timestamp)
+        .sort((a, b) => a.timestamp !== b.timestamp ? a.timestamp - b.timestamp : a.id < b.id ? -1 : 1)
       setMessages(all)
       set(ref(db, `rooms/${roomId}/lastRead/${me.uid}`), Date.now())
       setUnread((prev) => ({ ...prev, [activeUser.uid]: 0 }))
@@ -1284,7 +1284,7 @@ export default function Chat() {
       const all = Object.entries(data)
         .map(([id, v]) => ({ id, ...v }))
         .filter((m) => m.timestamp && isSameDay(m.timestamp))
-        .sort((a, b) => a.timestamp - b.timestamp)
+        .sort((a, b) => a.timestamp !== b.timestamp ? a.timestamp - b.timestamp : a.id < b.id ? -1 : 1)
       setGroupMessages(all)
       // 탭이 보이고 있고 그룹챗이 활성일 때만 읽음 처리
       const tabVisible = document.visibilityState !== 'hidden'
