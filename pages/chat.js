@@ -867,9 +867,6 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
 
   const handleSend = async () => {
     if (!input.trim() || !me || !activeUser || sending) return
-    // 첫 전송 시 알림 권한 요청 (사용자 제스처 컨텍스트)
-    }
-    const text = input.trim()
     setInput('')
     setSending(true)
     const roomId = [me.uid, activeUser.uid].sort().join('_')
