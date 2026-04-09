@@ -53,17 +53,32 @@ async function cleanupOldData(db) {
 
 function requestNotificationPermission() { /* 인앱 토스트 방식으로 변경 */ }
 
-// 아이콘만 있는 OS 알림
+// 인앱 토스트 알림
 function sendSilentNotification() {
-  if (!('Notification' in window)) return
-  if (Notification.permission !== 'granted') return
-  const n = new Notification('Jatry', {
-    icon: '/favicon.svg',
-    badge: '/favicon.svg',
-    body: ' ',  // 내용 없이 아이콘만
-    silent: true,
-    tag: 'msng-new-msg',
+  const existing = document.getElementById('msng-toast')
+  if (existing) {
+    clearTimeout(existing._timer)
+    existing.remove()
+  }
+  const toast = document.createElement('div')
+  toast.id = 'msng-toast'
+  toast.textContent = '💡'
+  Object.assign(toast.style, {
+    position: 'fixed',
+    bottom: '40px',
+    right: '20px',
+    fontSize: '18px',
+    zIndex: '9999',
+    opacity: '0',
+    transition: 'opacity 0.2s ease',
+    pointerEvents: 'none',
   })
+  document.body.appendChild(toast)
+  requestAnimationFrame(() => { toast.style.opacity = '1' })
+  toast._timer = setTimeout(() => {
+    toast.style.opacity = '0'
+    setTimeout(() => toast.remove(), 200)
+  }, 1500)
 }
 import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
@@ -511,8 +526,6 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
 
   const handleSend = async () => {
     if (!input.trim() || !me || sending) return
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission()
     }
     const text = input.trim(); setInput(''); setSending(true)
     try {
@@ -857,8 +870,6 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
   const handleSend = async () => {
     if (!input.trim() || !me || !activeUser || sending) return
     // 첫 전송 시 알림 권한 요청 (사용자 제스처 컨텍스트)
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission()
     }
     const text = input.trim()
     setInput('')
