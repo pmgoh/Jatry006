@@ -40,16 +40,16 @@ async function cleanupOldData(db) {
     }
 
     // 어제 가입한 유저 삭제
-    const usersSnap = await get(ref(db, 'users'))
-    if (usersSnap.exists()) {
-      const users = usersSnap.val()
-      const todayStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`
-      for (const [uid, user] of Object.entries(users)) {
-        if (user.createdDate && user.createdDate !== todayStr) {
-          await remove(ref(db, `users/${uid}`))
-        }
-      }
-    }
+    // const usersSnap = await get(ref(db, 'users'))
+    // if (usersSnap.exists()) {
+    // const users = usersSnap.val()
+    // const todayStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`
+    // for (const [uid, user] of Object.entries(users)) {
+    // if (user.createdDate && user.createdDate !== todayStr) {
+    // await remove(ref(db, `users/${uid}`))
+    // }
+    // }
+    // }
   } catch(e) {
     console.warn('cleanup error:', e)
   }
@@ -867,6 +867,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
 
   const handleSend = async () => {
     if (!input.trim() || !me || !activeUser || sending) return
+    const text = input.trim()
     setInput('')
     setSending(true)
     const roomId = [me.uid, activeUser.uid].sort().join('_')
