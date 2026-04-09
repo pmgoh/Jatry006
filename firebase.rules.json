@@ -3,10 +3,24 @@
     "users": {
       ".read": "auth != null",
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": "auth != null",
+        ".read": "auth != null"
       }
     },
     "rooms": {
+      "__public__": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "messages": {
+          ".indexOn": ["timestamp"]
+        },
+        "lastRead": {
+          "$uid": {
+            ".read": "auth != null",
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      },
       "$roomId": {
         ".read": "auth != null && ($roomId.contains(auth.uid))",
         ".write": "auth != null && ($roomId.contains(auth.uid))",

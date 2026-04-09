@@ -157,7 +157,7 @@ export default function AuthPage() {
         setError('이전 버전에서 만든 계정이에요. 새 계정을 만들어 입장해주세요.')
         setIsOldVersion(true)
       } else {
-        setError('닉네임 또는 비밀번호가 올바르지 않아요. 오늘 만든 계정인지 확인해주세요.')
+        setError('닉네임 또는 비밀번호가 올바르지 않아요. 오늘 만든 계정인지 확인하거나 새 계정을 만들어주세요.')
       }
     } finally {
       setLoading(false)

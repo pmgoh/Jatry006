@@ -14,6 +14,43 @@ function formatLastSeen(ts) {
 }
 
 // 알림 권한 요청
+// 어제 날짜 데이터 정리
+async function cleanupOldData(db) {
+  try {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayTs = today.getTime()
+
+    // 어제 이전 메시지 삭제 (rooms)
+    const roomsSnap = await get(ref(db, 'rooms'))
+    if (roomsSnap.exists()) {
+      const rooms = roomsSnap.val()
+      for (const [roomId, room] of Object.entries(rooms)) {
+        if (!room.messages) continue
+        for (const [msgId, msg] of Object.entries(room.messages)) {
+          if (msg.timestamp && msg.timestamp < todayTs) {
+            await remove(ref(db, `rooms/${roomId}/messages/${msgId}`))
+          }
+        }
+      }
+    }
+
+    // 어제 가입한 유저 삭제
+    const usersSnap = await get(ref(db, 'users'))
+    if (usersSnap.exists()) {
+      const users = usersSnap.val()
+      const todayStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`
+      for (const [uid, user] of Object.entries(users)) {
+        if (user.createdDate && user.createdDate !== todayStr) {
+          await remove(ref(db, `users/${uid}`))
+        }
+      }
+    }
+  } catch(e) {
+    console.warn('cleanup error:', e)
+  }
+}
+
 async function requestNotificationPermission() {
   if (!('Notification' in window)) return false
   if (Notification.permission === 'granted') return true
@@ -26,19 +63,18 @@ async function requestNotificationPermission() {
 function sendSilentNotification() {
   if (!('Notification' in window)) return
   if (Notification.permission !== 'granted') return
-  const n = new Notification(' ', {
+  const n = new Notification('Jatry', {
     icon: '/favicon.svg',
     badge: '/favicon.svg',
-    body: ' ',
+    body: ' ',  // 내용 없이 아이콘만
     silent: true,
     tag: 'msng-new-msg',
   })
-  setTimeout(() => n.close(), 2500)
 }
 import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth'
-import { ref, onValue, set, push, onDisconnect } from 'firebase/database'
+import { ref, onValue, set, push, onDisconnect, remove, get } from 'firebase/database'
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -460,7 +496,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
   // 탭 비활성/창 포커스 잃을 때 lastSeen 저장 + markedRead 리셋
   useEffect(() => {
     const saveLastSeen = () => {
-      if (document.visibilityState === 'hidden' || !document.hasFocus()) {
+      if (document.visibilityState === 'hidden') {
         localStorage.setItem('lastSeen___public__', String(Date.now()))
         setMarkedRead(false)
       }
@@ -481,6 +517,9 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
 
   const handleSend = async () => {
     if (!input.trim() || !me || sending) return
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
     const text = input.trim(); setInput(''); setSending(true)
     try {
       await push(ref(db, 'rooms/__public__/messages'), {
@@ -801,7 +840,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
   useEffect(() => {
     if (!activeUser) return
     const saveLastSeen = () => {
-      if (document.visibilityState === 'hidden' || !document.hasFocus()) {
+      if (document.visibilityState === 'hidden') {
         localStorage.setItem(`lastSeen_${activeUser.uid}`, String(Date.now()))
         setMarkedRead(false)
       }
@@ -823,6 +862,10 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
 
   const handleSend = async () => {
     if (!input.trim() || !me || !activeUser || sending) return
+    // 첫 전송 시 알림 권한 요청 (사용자 제스처 컨텍스트)
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
     const text = input.trim()
     setInput('')
     setSending(true)
@@ -1146,8 +1189,7 @@ export default function Chat() {
   useEffect(() => { activeGroupRef.current = activeGroup }, [activeGroup])
   useEffect(() => { meRef.current = me }, [me])
 
-  // 알림 권한 요청 (최초 1회)
-  useEffect(() => { requestNotificationPermission() }, [])
+  // 알림 권한은 첫 메시지 전송 시 요청 (useEffect에서 자동요청은 Chrome에서 무시됨)
 
   // 탭 타이틀 미읽음 숫자 업데이트
   useEffect(() => {
@@ -1165,6 +1207,8 @@ export default function Chat() {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) { router.push('/'); return }
       setMe(user)
+      // 백그라운드에서 어제 데이터 정리 (비동기, UI 블로킹 없음)
+      cleanupOldData(db)
       const onlineRef = ref(db, `users/${user.uid}/online`)
       const connectedRef = ref(db, '.info/connected')
 
@@ -1179,7 +1223,7 @@ export default function Chat() {
 
       // 탭 포커스에 따라 online 상태 업데이트
       const handleVisibility = () => {
-        if (document.visibilityState === 'hidden' || !document.hasFocus()) {
+        if (document.visibilityState === 'hidden') {
           set(ref(db, `users/${user.uid}/online`), false)
           set(ref(db, `users/${user.uid}/lastSeen`), Date.now())
         } else {
@@ -1248,7 +1292,7 @@ export default function Chat() {
         .sort((a, b) => a.timestamp - b.timestamp)
       setGroupMessages(all)
       // 탭이 보이고 있고 그룹챗이 활성일 때만 읽음 처리
-      const tabVisible = document.visibilityState !== 'hidden' && document.hasFocus()
+      const tabVisible = document.visibilityState !== 'hidden'
       if (activeGroupRef.current && tabVisible) {
         set(ref(db, `rooms/__public__/lastRead/${me.uid}`), Date.now())
         setGroupUnread(0)
@@ -1270,14 +1314,26 @@ export default function Chat() {
     const unsub = onValue(ref(db, 'rooms/__public__/messages'), (snap) => {
       const data = snap.val()
       if (!data) return
-      const tabVisible = document.visibilityState !== 'hidden' && document.hasFocus()
-      // 탭 보이고 그룹챗 열려있으면 카운트 안 함
-      if (activeGroupRef.current && tabVisible) return
+      const isVisible = document.visibilityState !== 'hidden' && document.hasFocus()
+      // 그룹챗 보고있으면 lastSeen 갱신 + 카운트 0
+      if (activeGroupRef.current && isVisible) {
+        localStorage.setItem('lastSeen___public__', String(Date.now()))
+        setGroupUnread(0)
+        return
+      }
       const lastSeen = parseInt(localStorage.getItem('lastSeen___public__') || '0')
       const count = Object.values(data).filter(
-        (m) => m.sender !== me.uid && m.timestamp > lastSeen && isSameDay(m.timestamp)
+        (m) => m.sender !== me.uid && m.type !== 'system' && m.timestamp > lastSeen && isSameDay(m.timestamp)
       ).length
-      setGroupUnread(count)
+      setGroupUnread((prev) => {
+        if (count > (prev || 0)) {
+          setTimeout(() => {
+            const settings = JSON.parse(localStorage.getItem('notifySettings') || '{}')
+            if (settings['__public__'] !== false) sendSilentNotification()
+          }, 0)
+        }
+        return count
+      })
     })
     return () => unsub()
   }, [me])
