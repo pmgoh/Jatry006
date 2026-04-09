@@ -541,7 +541,9 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
   if (!me) return null
 
   return (
-    <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--night)' }}>
+    <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--night)' }}
+      onMouseEnter={() => setIsHoveringMessages(true)}
+      onMouseLeave={() => setIsHoveringMessages(false)}>
       {/* 헤더 */}
       <div className="flex items-center gap-3 px-4 py-3.5 flex-shrink-0" style={{
         borderBottom: '1px solid var(--border)',
@@ -890,7 +892,9 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
   // 상대방의 lastRead (내 메시지가 읽혔는지 기준)
 
   return (
-    <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--night)' }}>
+    <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--night)' }}
+      onMouseEnter={() => setIsHoveringMessages(true)}
+      onMouseLeave={() => setIsHoveringMessages(false)}>
       {/* 설정 말풍선 - position fixed로 stacking context 탈출 */}
       {showSecureSettings && (
         <div style={{
