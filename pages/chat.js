@@ -51,13 +51,7 @@ async function cleanupOldData(db) {
   }
 }
 
-async function requestNotificationPermission() {
-  if (!('Notification' in window)) return false
-  if (Notification.permission === 'granted') return true
-  if (Notification.permission === 'denied') return false
-  const result = await Notification.requestPermission()
-  return result === 'granted'
-}
+function requestNotificationPermission() { /* 인앱 토스트 방식으로 변경 */ }
 
 // 아이콘만 있는 OS 알림
 function sendSilentNotification() {
@@ -661,7 +655,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
             const prev = messages[i - 1], next = messages[i + 1]
             const isFirst = !prev || prev.sender !== msg.sender
             const isLast = !next || next.sender !== msg.sender
-            const showMark = groupMarkerTs && !markedRead &&
+            const showMark = !!groupMarkerTs && !markedRead &&
               msg.timestamp > groupMarkerTs &&
               msg.sender !== me?.uid && msg.type !== 'system' &&
               (!prev || prev.timestamp <= groupMarkerTs || prev.sender === me?.uid)
@@ -1084,7 +1078,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
             const isLast = !next || next.sender !== msg.sender
 
             // 마지막 읽은 위치 구분선 — lastReadMark 이후 첫 번째 메시지 앞에
-            const showMark = lastReadMark && !markedRead &&
+            const showMark = !!lastReadMark && !markedRead &&
               msg.timestamp > lastReadMark &&
               msg.sender !== me?.uid &&
               (!prev || prev.timestamp <= lastReadMark || prev.sender === me?.uid)
