@@ -1,4 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
+import { useRouter } from 'next/router'
+import { auth, db } from '../lib/firebase'
+import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth'
+import { ref, onValue, set, push, onDisconnect, remove, get } from 'firebase/database'
 
 const APP_VERSION = '1.2'
 
@@ -80,10 +84,6 @@ function sendSilentNotification() {
     setTimeout(() => toast.remove(), 200)
   }, 1500)
 }
-import { useRouter } from 'next/router'
-import { auth, db } from '../lib/firebase'
-import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth'
-import { ref, onValue, set, push, onDisconnect, remove, get } from 'firebase/database'
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -865,7 +865,6 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
 
   const otherLastRead = lastRead?.[activeUser?.uid] || 0
   if (!activeUser || !me) return null
-
 
   const handleSend = async () => {
     if (!input.trim() || !me || !activeUser || sending) return
