@@ -315,15 +315,25 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
   return (
     <aside className="flex flex-col h-full" style={{ background: 'var(--surface)', borderRight: '1px solid var(--border)' }}>
       <div className="flex items-center gap-2.5 px-4 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
-        <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" fill="white"/>
-          </svg>
+        <div style={{ width: 26, height: 26, borderRadius: 7, background: '#5F50D2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16, color: 'white', fontFamily: 'Arial, sans-serif' }}>
+          J
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold leading-none" style={{ color: 'var(--text)' }}>Jatry</p>
           <p className="mt-0.5" style={{ color: 'var(--muted)', fontSize: 10 }}>AI 프로젝트 06번째</p>
         </div>
+        {/* 다운로드 버튼 */}
+        <a
+          href="https://github.com/pmgoh/Jatry006/releases/latest/download/Jatry-Setup.exe"
+          title="Windows 앱 다운로드"
+          style={{ width: 26, height: 26, borderRadius: 7, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, textDecoration: 'none' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = '#7c6af7' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+        </a>
         {onClose && (
           <button onClick={onClose}
             style={{ width: 26, height: 26, borderRadius: 7, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
