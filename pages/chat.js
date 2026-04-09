@@ -777,7 +777,6 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
           <p className="text-center mt-1.5 hidden md:block" style={{ color: 'var(--muted)', fontSize: 11 }}>Enter 전송 · Shift+Enter 줄바꿈</p>
         </div>
       </div>
-      </div>
     </div>
   )
 }
