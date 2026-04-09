@@ -618,6 +618,10 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
         )}
       </div>
 
+      {/* 메시지+입력 블러 래퍼 */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease`, userSelect: secureMode && !isHoveringMessages ? 'none' : 'auto' }}
+        onMouseEnter={() => setIsHoveringMessages(true)}
+        onMouseLeave={() => setIsHoveringMessages(false)}>
       {/* 메시지 */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {showScrollBtn && (
@@ -773,6 +777,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
           </div>
           <p className="text-center mt-1.5 hidden md:block" style={{ color: 'var(--muted)', fontSize: 11 }}>Enter 전송 · Shift+Enter 줄바꿈</p>
         </div>
+      </div>
       </div>
     </div>
   )
@@ -1028,6 +1033,10 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
         )}
       </div>
 
+      {/* 메시지+입력 블러 래퍼 */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',   userSelect: secureMode && !isHoveringMessages ? 'none' : 'auto' }}
+        onMouseEnter={() => setIsHoveringMessages(true)}
+        onMouseLeave={() => setIsHoveringMessages(false)}>
       {/* 메시지 리스트 */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {/* 새 메시지 버튼 */}
@@ -1159,6 +1168,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
           Enter 전송 · Shift+Enter 줄바꿈
         </p>
         </div>
+      </div>
       </div>
     </div>
   )
