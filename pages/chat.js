@@ -55,34 +55,46 @@ async function cleanupOldData(db) {
   }
 }
 
-function requestNotificationPermission() { /* 인앱 토스트 방식으로 변경 */ }
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) return false
+  if (Notification.permission === 'granted') return true
+  if (Notification.permission === 'denied') return false
+  const result = await Notification.requestPermission()
+  return result === 'granted'
+}
 
-// 인앱 토스트 알림
 function sendSilentNotification() {
-  const existing = document.getElementById('msng-toast')
-  if (existing) {
-    clearTimeout(existing._timer)
-    existing.remove()
+  // OS 알림 시도
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      const n = new Notification(' ', {
+        icon: '/favicon.svg',
+        badge: '/favicon.svg',
+        silent: true,
+        requireInteraction: false,
+        tag: 'msng-msg',
+      })
+      setTimeout(() => n.close(), 2000)
+      return
+    } catch(e) {}
   }
+  // fallback: 인앱 토스트
+  const existing = document.getElementById('msng-toast')
+  if (existing) { clearTimeout(existing._timer); existing.remove() }
   const toast = document.createElement('div')
   toast.id = 'msng-toast'
   toast.textContent = '💡'
   Object.assign(toast.style, {
-    position: 'fixed',
-    bottom: '40px',
-    right: '20px',
-    fontSize: '18px',
-    zIndex: '9999',
-    opacity: '0',
-    transition: 'opacity 0.2s ease',
-    pointerEvents: 'none',
+    position: 'fixed', bottom: '40px', right: '20px',
+    fontSize: '20px', zIndex: '9999', opacity: '0',
+    transition: 'opacity 0.3s ease', pointerEvents: 'none',
   })
   document.body.appendChild(toast)
   requestAnimationFrame(() => { toast.style.opacity = '1' })
   toast._timer = setTimeout(() => {
     toast.style.opacity = '0'
-    setTimeout(() => toast.remove(), 200)
-  }, 1500)
+    setTimeout(() => toast.remove(), 300)
+  }, 2000)
 }
 
 function formatTime(ts) {
@@ -1191,6 +1203,9 @@ export default function Chat() {
   useEffect(() => { meRef.current = me }, [me])
 
   // 알림 권한은 첫 메시지 전송 시 요청 (useEffect에서 자동요청은 Chrome에서 무시됨)
+
+  // 알림 권한 요청 (최초 1회)
+  useEffect(() => { requestNotificationPermission() }, [])
 
   // 탭 타이틀 미읽음 숫자 업데이트
   useEffect(() => {
