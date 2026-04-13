@@ -287,7 +287,7 @@ function ProfileArea({ meUser, onLogout, onRenameNotify }) {
   )
 }
 
-function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers, activeGroup, onSelectGroup, groupUnread, onClose, onRenameNotify }) {
+function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers, activeGroup, onSelectGroup, groupUnread, onClose, onRenameNotify, privateGroups, activePrivateGroup, onSelectPrivateGroup, privateGroupUnread }) {
   const otherUsers = users.filter((u) => u.uid !== me?.uid)
   const meUser = users.find((u) => u.uid === me?.uid)
 
@@ -385,6 +385,44 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
         </button>
       </div>
 
+      {/* 비공개 그룹 목록 */}
+      <div className="px-2 pt-2 pb-1 flex-shrink-0">
+        <div className="flex items-center justify-between px-2 mb-1">
+          <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>그룹</p>
+          <button onClick={() => onSelectPrivateGroup('__create__')}
+            style={{ width: 18, height: 18, borderRadius: 5, background: 'rgba(124,106,247,0.15)', border: 'none', cursor: 'pointer', color: '#7c6af7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, lineHeight: 1 }}
+            title="그룹 만들기"
+          >+</button>
+        </div>
+        {(privateGroups || []).map(g => {
+          const isActive = activePrivateGroup?.id === g.id
+          const unreadCount = (privateGroupUnread || {})[g.id] || 0
+          return (
+            <button key={g.id} onClick={() => onSelectPrivateGroup(g)}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl mb-0.5 transition-all duration-150 text-left"
+              style={{
+                background: isActive ? 'rgba(124,106,247,0.12)' : 'transparent',
+                border: isActive ? '1px solid rgba(124,106,247,0.25)' : '1px solid transparent',
+              }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
+            >
+              <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#7c6af7' }}>
+                {g.name?.slice(0, 1).toUpperCase() || '#'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm truncate leading-none" style={{ color: 'var(--text)', fontWeight: unreadCount > 0 ? 600 : 400 }}>{g.name}</p>
+              </div>
+              {unreadCount > 0 && (
+                <div style={{ minWidth: 18, height: 18, borderRadius: 9, padding: '0 5px', background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white' }}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </div>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
       <div className="px-4 pt-3 pb-2 flex-shrink-0">
         <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>
           오늘 · {otherUsers.filter(u => u.online).length}명 온라인
@@ -449,6 +487,156 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
 
       {meUser && <ProfileArea meUser={meUser} onLogout={onLogout} onRenameNotify={onRenameNotify} />}
     </aside>
+  )
+}
+
+function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) {
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [markedRead, setMarkedRead] = useState(false)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [newMsgCount, setNewMsgCount] = useState(false)
+  const [isHoveringMessages, setIsHoveringMessages] = useState(false)
+  const [secureMode, setSecureMode] = useState(() => typeof window !== 'undefined' ? localStorage.getItem('secureMode') === 'true' : false)
+  const [blurAmount] = useState(() => typeof window !== 'undefined' ? parseInt(localStorage.getItem('blurAmount') || '8') : 8)
+  const [blurSpeed] = useState(() => typeof window !== 'undefined' ? parseInt(localStorage.getItem('blurSpeed') || '300') : 300)
+  const inputRef = useRef(null)
+  const bottomRef = useRef(null)
+  const scrollContainerRef = useRef(null)
+  const isNearBottom = useRef(true)
+
+  useEffect(() => {
+    if (!bottomRef.current) return
+    const isNew = messages.length > 0 && messages[messages.length - 1]?.sender !== me?.uid
+    if (!markedRead) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      setMarkedRead(true)
+    } else if (isNew && isNearBottom.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    } else if (isNew) {
+      setShowScrollBtn(true)
+      setNewMsgCount(c => c + 1)
+    }
+  }, [messages])
+
+  const handleSend = async () => {
+    if (!input.trim() || !me || sending) return
+    const text = input.trim(); setInput(''); setSending(true)
+    try {
+      await push(ref(db, `rooms/${group.id}/messages`), {
+        sender: me.uid, senderName: me.displayName,
+        text, timestamp: Date.now(),
+      })
+    } finally { setSending(false); inputRef.current?.focus() }
+  }
+
+  const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }
+
+  if (!group || !me) return null
+
+  return (
+    <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--night)' }}>
+      {/* 헤더 */}
+      <div className="flex items-center gap-3 px-4 py-3.5 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)', background: 'rgba(10,11,15,0.85)' }}>
+        {onBack && (
+          <button onClick={onBack} className="p-1.5 rounded-lg transition-colors md:hidden" style={{ color: 'var(--text-dim)' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+        )}
+        <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: '#7c6af7' }}>
+          {group.name?.slice(0, 1).toUpperCase() || '#'}
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium leading-none mb-0.5" style={{ color: 'var(--text)' }}>{group.name}</p>
+          <p className="text-xs" style={{ color: 'var(--text-dim)' }}>코드: {group.code}</p>
+        </div>
+        <button onClick={() => setSecureMode(v => { const next = !v; localStorage.setItem('secureMode', String(next)); return next })}
+          style={{ width: 36, height: 20, borderRadius: 10, padding: 2, cursor: 'pointer', background: secureMode ? 'linear-gradient(135deg, #7c6af7, #4fa3f7)' : 'var(--border)', border: 'none', transition: 'background 0.2s ease', position: 'relative', flexShrink: 0 }}>
+          <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'white', position: 'absolute', top: 2, transition: 'left 0.2s ease', left: secureMode ? 18 : 2, boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+        </button>
+        {onClose && (
+          <button onClick={onClose} className="p-1.5 rounded-lg" style={{ color: 'var(--muted)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = 'var(--text)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        )}
+      </div>
+
+      {/* 메시지 */}
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}
+        onMouseEnter={() => setIsHoveringMessages(true)}
+        onMouseLeave={() => setIsHoveringMessages(false)}>
+        {showScrollBtn && (
+          <button onClick={() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); setShowScrollBtn(false); setNewMsgCount(0) }}
+            style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 20, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 20, background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', border: 'none', cursor: 'pointer', color: 'white', fontSize: 12, fontWeight: 600 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+            새 메시지 {newMsgCount > 0 ? newMsgCount : ''}
+          </button>
+        )}
+        <div ref={scrollContainerRef} className="h-full overflow-y-auto py-6"
+          onScroll={(e) => { const el = e.currentTarget; const dist = el.scrollHeight - el.scrollTop - el.clientHeight; isNearBottom.current = dist < 80; if (isNearBottom.current) { setShowScrollBtn(false); setNewMsgCount(0) } }}
+          style={{ filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease`, userSelect: secureMode && !isHoveringMessages ? 'none' : 'auto' }}>
+          <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 24px' }}>
+            {messages.length === 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, textAlign: 'center' }}>
+                <p style={{ fontSize: 14, color: 'var(--text-dim)', marginBottom: 4 }}>{group.name}</p>
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>첫 메시지를 보내보세요</p>
+              </div>
+            )}
+            {messages.map((msg, i) => {
+              const isMe = msg.sender === me?.uid
+              const prev = messages[i - 1], next = messages[i + 1]
+              const isFirst = !prev || prev.sender !== msg.sender
+              const isLast = !next || next.sender !== msg.sender
+              if (isMe) return (
+                <div key={msg.id} style={{ display: 'flex', justifyContent: 'flex-end', marginTop: isFirst ? 28 : 4 }}>
+                  <div style={{ maxWidth: '62%' }}>
+                    <div style={{ padding: '10px 15px', borderRadius: isLast ? '16px 16px 4px 16px' : '16px', background: 'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(79,163,247,0.16))', border: '1px solid rgba(124,106,247,0.25)', fontSize: 15, lineHeight: 1.6, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                    {isLast && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4, paddingRight: 2 }}><span style={{ fontSize: 11, color: 'var(--muted)' }}>{formatTime(msg.timestamp)}</span></div>}
+                  </div>
+                </div>
+              )
+              return (
+                <div key={msg.id} style={{ marginTop: isFirst ? 28 : 4 }}>
+                  {isFirst && <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><Avatar name={msg.senderName || '?'} size={24} /><span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{msg.senderName}</span></div>}
+                  <div style={{ paddingLeft: 34, fontSize: 15, lineHeight: 1.7, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                  {isLast && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, paddingLeft: 34 }}>{formatTime(msg.timestamp)}</p>}
+                </div>
+              )
+            })}
+            <div ref={bottomRef} />
+          </div>
+        </div>
+      </div>
+
+      {/* 입력창 */}
+      <div className="px-4 pb-4 pt-2 flex-shrink-0"
+        onMouseEnter={() => setIsHoveringMessages(true)}
+        onMouseLeave={() => setIsHoveringMessages(false)}
+        style={{ filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease` }}>
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          <div className="glow-border flex items-center gap-2.5 px-4 py-3 rounded-2xl" style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}>
+            <textarea ref={inputRef} value={input}
+              onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
+              onKeyDown={handleKeyDown}
+              placeholder={`${group.name}에 메시지 보내기...`}
+              rows={1} className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
+              style={{ color: 'var(--text)', caretColor: '#7c6af7', maxHeight: 120 }}
+            />
+            <button onClick={handleSend} disabled={!input.trim() || sending}
+              className="send-btn flex-shrink-0 rounded-xl flex items-center justify-center"
+              style={{ width: 32, height: 32, opacity: input.trim() ? 1 : 0.3, cursor: input.trim() ? 'pointer' : 'not-allowed' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
+                <path d="M22 2L15 22 11 13 2 9l20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+          <p className="text-center mt-1.5 hidden md:block" style={{ color: 'var(--muted)', fontSize: 11 }}>Enter 전송 · Shift+Enter 줄바꿈</p>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -775,6 +963,72 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
             </button>
           </div>
           <p className="text-center mt-1.5 hidden md:block" style={{ color: 'var(--muted)', fontSize: 11 }}>Enter 전송 · Shift+Enter 줄바꿈</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GroupModal({ mode, group, onCreate, onJoin, onClose }) {
+  const [name, setName] = useState('')
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async () => {
+    setError('')
+    if (mode === 'create') {
+      if (!name.trim()) return setError('그룹 이름을 입력해주세요')
+      if (code.length !== 4 || !/^\d{4}$/.test(code)) return setError('4자리 숫자 코드를 입력해주세요')
+      setLoading(true)
+      await onCreate(name, code)
+      setLoading(false)
+    } else {
+      if (code.length !== 4) return setError('4자리 코드를 입력해주세요')
+      setLoading(true)
+      const ok = await onJoin(group, code)
+      setLoading(false)
+      if (!ok) setError('코드가 올바르지 않아요')
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: '28px 28px 24px', width: 320, boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
+        <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 20 }}>
+          {mode === 'create' ? '그룹 만들기' : `"${group?.name}" 입장`}
+        </p>
+        {mode === 'create' && (
+          <div style={{ marginBottom: 14 }}>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="그룹 이름"
+              autoFocus
+              style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+        )}
+        <div style={{ marginBottom: 16 }}>
+          <input
+            value={code}
+            onChange={(e) => { const v = e.target.value.replace(/\D/g,'').slice(0,4); setCode(v) }}
+            placeholder={mode === 'create' ? '4자리 코드 설정' : '4자리 코드 입력'}
+            maxLength={4}
+            inputMode="numeric"
+            autoFocus={mode === 'join'}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit() }}
+            style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 20, color: 'var(--text)', outline: 'none', letterSpacing: '0.3em', textAlign: 'center', boxSizing: 'border-box' }}
+          />
+        </div>
+        {error && <p style={{ fontSize: 12, color: '#f87171', marginBottom: 12 }}>{error}</p>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-dim)', fontSize: 13, cursor: 'pointer' }}>취소</button>
+          <button onClick={handleSubmit} disabled={loading}
+            style={{ flex: 2, padding: '10px', borderRadius: 10, background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', border: 'none', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
+            {loading ? '처리 중...' : mode === 'create' ? '만들기' : '입장'}
+          </button>
         </div>
       </div>
     </div>
@@ -1130,7 +1384,10 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
       </div>
 
       {/* 입력창 */}
-      <div className="px-4 pb-4 pt-2 flex-shrink-0">
+      <div className="px-4 pb-4 pt-2 flex-shrink-0"
+        onMouseEnter={() => setIsHoveringMessages(true)}
+        onMouseLeave={() => setIsHoveringMessages(false)}
+        style={{ filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease` }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <div className="glow-border flex items-center gap-2.5 px-4 py-3 rounded-2xl"
           style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}>
@@ -1191,6 +1448,12 @@ export default function Chat() {
   const [unread, setUnread] = useState({})
   const [groupUnread, setGroupUnread] = useState(0)
   const [groupMarkerTs, setGroupMarkerTs] = useState(0)
+  const [privateGroups, setPrivateGroups] = useState([])
+  const [activePrivateGroup, setActivePrivateGroup] = useState(null)
+  const [privateGroupMessages, setPrivateGroupMessages] = useState([])
+  const [privateGroupUnread, setPrivateGroupUnread] = useState({})
+  const [showGroupModal, setShowGroupModal] = useState(null) // 'create' | { join: group }
+  const activePrivateGroupRef = useRef(null)
   const [lastRead, setLastRead] = useState({})
   const [lastGroupRead, setLastGroupRead] = useState(0)
   const [loadingUsers, setLoadingUsers] = useState(true)
@@ -1439,6 +1702,94 @@ export default function Chat() {
     setMessages([])
   }
 
+  // 비공개 그룹 로드
+  useEffect(() => {
+    if (!me) return
+    const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,'')
+    const unsub = onValue(ref(db, 'groups'), (snap) => {
+      if (!snap.val()) { setPrivateGroups([]); return }
+      const all = Object.entries(snap.val())
+        .filter(([, g]) => g.createdDate === todayStr)
+        .map(([id, g]) => ({ id, ...g }))
+      setPrivateGroups(all)
+    })
+    return () => unsub()
+  }, [me])
+
+  // 비공개 그룹 메시지 리스너
+  useEffect(() => {
+    if (!activePrivateGroup || !me) return
+    const unsub = onValue(ref(db, `rooms/${activePrivateGroup.id}/messages`), (snap) => {
+      const data = snap.val()
+      if (!data) { setPrivateGroupMessages([]); return }
+      const list = Object.entries(data)
+        .map(([id, v]) => ({ id, ...v }))
+        .filter(m => m.timestamp && isSameDay(m.timestamp))
+        .sort((a, b) => a.timestamp !== b.timestamp ? a.timestamp - b.timestamp : a.id < b.id ? -1 : 1)
+      setPrivateGroupMessages(list)
+      if (activePrivateGroupRef.current?.id === activePrivateGroup.id) {
+        localStorage.setItem(`lastSeen_${activePrivateGroup.id}`, String(Date.now()))
+        setPrivateGroupUnread(prev => ({ ...prev, [activePrivateGroup.id]: 0 }))
+      }
+    })
+    return () => unsub()
+  }, [activePrivateGroup, me])
+
+  const handleSelectPrivateGroup = async (group) => {
+    if (group === '__create__') {
+      setShowGroupModal('create')
+      return
+    }
+    // 이미 입장한 그룹인지 확인
+    const joined = JSON.parse(localStorage.getItem('joinedGroups') || '{}')
+    if (joined[group.id]) {
+      activePrivateGroupRef.current = group
+      setActivePrivateGroup(group)
+      setActiveGroup(false)
+      setActiveUser(null)
+      setMessages([])
+      setMobileView('chat')
+    } else {
+      setShowGroupModal({ join: group })
+    }
+  }
+
+  const handleCreateGroup = async (name, code) => {
+    if (!me || !name.trim() || code.length !== 4) return
+    const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,'')
+    const newGroup = await push(ref(db, 'groups'), {
+      name: name.trim(), code, createdBy: me.uid,
+      createdDate: todayStr, members: { [me.uid]: true }
+    })
+    const joined = JSON.parse(localStorage.getItem('joinedGroups') || '{}')
+    joined[newGroup.key] = true
+    localStorage.setItem('joinedGroups', JSON.stringify(joined))
+    setShowGroupModal(null)
+    const group = { id: newGroup.key, name: name.trim(), code, createdBy: me.uid }
+    activePrivateGroupRef.current = group
+    setActivePrivateGroup(group)
+    setActiveGroup(false)
+    setActiveUser(null)
+    setMessages([])
+    setMobileView('chat')
+  }
+
+  const handleJoinGroup = async (group, inputCode) => {
+    if (inputCode !== group.code) return false
+    const joined = JSON.parse(localStorage.getItem('joinedGroups') || '{}')
+    joined[group.id] = true
+    localStorage.setItem('joinedGroups', JSON.stringify(joined))
+    await set(ref(db, `groups/${group.id}/members/${me.uid}`), true)
+    activePrivateGroupRef.current = group
+    setActivePrivateGroup(group)
+    setActiveGroup(false)
+    setActiveUser(null)
+    setMessages([])
+    setMobileView('chat')
+    setShowGroupModal(null)
+    return true
+  }
+
   const handleRenameNotify = (from, to) => {
     setRenameNotice({ from, to })
   }
@@ -1477,9 +1828,13 @@ export default function Chat() {
           <Sidebar me={me} users={users} activeUser={activeUser} unread={unread}
             onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers}
             activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread}
-            onClose={() => setSidebarOpen(false)} onRenameNotify={handleRenameNotify} />
+            onClose={() => setSidebarOpen(false)} onRenameNotify={handleRenameNotify}
+            privateGroups={privateGroups} activePrivateGroup={activePrivateGroup}
+            onSelectPrivateGroup={handleSelectPrivateGroup} privateGroupUnread={privateGroupUnread} />
         </div>
-        {activeGroup
+        {activePrivateGroup
+          ? <PrivateGroupPanel me={me} group={activePrivateGroup} messages={privateGroupMessages} onClose={handleCloseChat} />
+          : activeGroup
           ? <GroupChatPanel me={me} messages={groupMessages} lastGroupRead={lastGroupRead} groupMarkerTs={groupMarkerTs} onClose={handleCloseChat} />
           : activeUser
             ? <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead} onClose={handleCloseChat}
@@ -1500,8 +1855,13 @@ export default function Chat() {
         {mobileView === 'list'
           ? <Sidebar me={me} users={users} activeUser={activeUser} unread={unread}
               onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers}
-              activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread} onRenameNotify={handleRenameNotify} />
-          : activeGroup
+              activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread} onRenameNotify={handleRenameNotify}
+              privateGroups={privateGroups} activePrivateGroup={activePrivateGroup}
+              onSelectPrivateGroup={handleSelectPrivateGroup} privateGroupUnread={privateGroupUnread} />
+          : activePrivateGroup
+            ? <PrivateGroupPanel me={me} group={activePrivateGroup} messages={privateGroupMessages}
+                onBack={() => { setMobileView('list'); setActivePrivateGroup(null) }} />
+            : activeGroup
             ? <GroupChatPanel me={me} messages={groupMessages} lastGroupRead={lastGroupRead} groupMarkerTs={groupMarkerTs}
                 onBack={() => { setMobileView('list'); setActiveGroup(false) }} />
             : <ChatPanel me={me} activeUser={activeUser} messages={messages} lastRead={lastRead}
@@ -1527,6 +1887,15 @@ export default function Chat() {
       }}>
         v{APP_VERSION}
       </div>
+
+      {/* 그룹 생성/입장 모달 */}
+      {showGroupModal && <GroupModal
+        mode={showGroupModal === 'create' ? 'create' : 'join'}
+        group={showGroupModal?.join}
+        onCreate={handleCreateGroup}
+        onJoin={handleJoinGroup}
+        onClose={() => setShowGroupModal(null)}
+      />}
 
       {/* 닉네임 변경 알림 */}
       {renameNotice && (
