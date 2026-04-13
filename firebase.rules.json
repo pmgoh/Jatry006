@@ -7,13 +7,18 @@
         ".read": "auth != null"
       }
     },
+    "groups": {
+      ".read": "auth != null",
+      "$groupId": {
+        ".write": "auth != null",
+        ".read": "auth != null"
+      }
+    },
     "rooms": {
       "__public__": {
         ".read": "auth != null",
         ".write": "auth != null",
-        "messages": {
-          ".indexOn": ["timestamp"]
-        },
+        "messages": { ".indexOn": ["timestamp"] },
         "lastRead": {
           "$uid": {
             ".read": "auth != null",
@@ -22,14 +27,12 @@
         }
       },
       "$roomId": {
-        ".read": "auth != null && ($roomId.contains(auth.uid))",
-        ".write": "auth != null && ($roomId.contains(auth.uid))",
-        "messages": {
-          ".indexOn": ["timestamp"]
-        },
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "messages": { ".indexOn": ["timestamp"] },
         "lastRead": {
           "$uid": {
-            ".read": "auth != null && ($roomId.contains(auth.uid))",
+            ".read": "auth != null",
             ".write": "auth != null && auth.uid === $uid"
           }
         }

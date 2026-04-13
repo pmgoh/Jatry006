@@ -140,6 +140,15 @@ export default function AuthPage() {
     setLoading(true)
     try {
       const cred = await signInWithEmailAndPassword(auth, fakeEmail(username), password)
+      // 오늘 만든 계정인지 확인
+      const snap = await import('firebase/database').then(m => m.get(m.ref(db, `users/${cred.user.uid}/createdDate`)))
+      const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,'')
+      if (snap.val() && snap.val() !== todayStr) {
+        await import('firebase/auth').then(m => m.signOut(auth))
+        setError('어제 만든 계정이에요. 오늘 새 계정을 만들어 입장해주세요.')
+        setIsOldVersion(true)
+        return
+      }
       await set(ref(db, `users/${cred.user.uid}/online`), true)
       setSuccess('입장!')
       setTimeout(() => router.push('/chat'), 400)
@@ -149,15 +158,16 @@ export default function AuthPage() {
         setError('네트워크 오류가 발생했어요. 인터넷 연결을 확인해주세요.')
       } else if (err.code === 'auth/too-many-requests') {
         setError('잠시 후 다시 시도해주세요. (요청이 너무 많아요)')
-      } else if (
-        err.code === 'auth/invalid-credential' ||
-        err.code === 'auth/user-not-found' ||
-        err.code === 'auth/wrong-password'
-      ) {
-        setError('이전 버전에서 만든 계정이에요. 새 계정을 만들어 입장해주세요.')
+      } else if (err.code === 'auth/user-not-found') {
+        setError('오늘 가입한 계정이 없어요. 새 계정을 만들어주세요.')
+        setIsOldVersion(true)
+      } else if (err.code === 'auth/wrong-password') {
+        setError('비밀번호가 올바르지 않아요.')
+      } else if (err.code === 'auth/invalid-credential') {
+        setError('아이디 또는 비밀번호가 올바르지 않아요. 오늘 만든 계정인지 확인해주세요.')
         setIsOldVersion(true)
       } else {
-        setError('닉네임 또는 비밀번호가 올바르지 않아요. 오늘 만든 계정인지 확인하거나 새 계정을 만들어주세요.')
+        setError(`오류가 발생했어요. (${err.code || 'unknown'})`)
       }
     } finally {
       setLoading(false)

@@ -485,7 +485,21 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
         )}
       </div>
 
-      {meUser && <ProfileArea meUser={meUser} onLogout={onLogout} onRenameNotify={onRenameNotify} />}
+      {meUser
+        ? <ProfileArea meUser={meUser} onLogout={onLogout} onRenameNotify={onRenameNotify} />
+        : <div className="flex items-center gap-2.5 px-3 py-3 flex-shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>이전 버전 계정</p>
+            </div>
+            <button onClick={onLogout} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--muted)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.background = 'rgba(248,113,113,0.08)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+              </svg>
+            </button>
+          </div>
+      }
     </aside>
   )
 }
