@@ -19,39 +19,38 @@ function formatLastSeen(ts) {
 
 // 알림 권한 요청
 // 어제 날짜 데이터 정리
-async function cleanupOldData(db) {
+async function cleanupOldData(db, myUid) {
   try {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const todayTs = today.getTime()
 
-    // 어제 이전 메시지 삭제 (rooms)
-    const roomsSnap = await get(ref(db, 'rooms'))
-    if (roomsSnap.exists()) {
-      const rooms = roomsSnap.val()
-      for (const [roomId, room] of Object.entries(rooms)) {
-        if (!room.messages) continue
-        for (const [msgId, msg] of Object.entries(room.messages)) {
-          if (msg.timestamp && msg.timestamp < todayTs) {
-            await remove(ref(db, `rooms/${roomId}/messages/${msgId}`))
-          }
+    // __public__ 방 어제 메시지 삭제
+    const pubSnap = await get(ref(db, 'rooms/__public__/messages'))
+    if (pubSnap.exists()) {
+      for (const [msgId, msg] of Object.entries(pubSnap.val())) {
+        if (msg.timestamp && msg.timestamp < todayTs) {
+          await remove(ref(db, `rooms/__public__/messages/${msgId}`)).catch(() => {})
         }
       }
     }
 
-    // 어제 가입한 유저 삭제
-    // const usersSnap = await get(ref(db, 'users'))
-    // if (usersSnap.exists()) {
-    // const users = usersSnap.val()
-    // const todayStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`
-    // for (const [uid, user] of Object.entries(users)) {
-    // if (user.createdDate && user.createdDate !== todayStr) {
-    // await remove(ref(db, `users/${uid}`))
-    // }
-    // }
-    // }
+    // 내 UID가 포함된 DM 방만 삭제
+    const roomsSnap = await get(ref(db, 'rooms'))
+    if (roomsSnap.exists()) {
+      for (const [roomId, room] of Object.entries(roomsSnap.val())) {
+        if (roomId === '__public__') continue
+        if (!roomId.includes(myUid)) continue  // 내 방만
+        if (!room.messages) continue
+        for (const [msgId, msg] of Object.entries(room.messages)) {
+          if (msg.timestamp && msg.timestamp < todayTs) {
+            await remove(ref(db, `rooms/${roomId}/messages/${msgId}`)).catch(() => {})
+          }
+        }
+      }
+    }
   } catch(e) {
-    console.warn('cleanup error:', e)
+    // 권한 오류는 무시
   }
 }
 
@@ -1502,7 +1501,7 @@ export default function Chat() {
       if (!user) { router.push('/'); return }
       setMe(user)
       // 백그라운드에서 어제 데이터 정리 (비동기, UI 블로킹 없음)
-      cleanupOldData(db)
+      cleanupOldData(db, user.uid)
       const onlineRef = ref(db, `users/${user.uid}/online`)
       const connectedRef = ref(db, '.info/connected')
 
