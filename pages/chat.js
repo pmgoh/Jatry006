@@ -324,7 +324,7 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
         </div>
         {/* 다운로드 버튼 */}
         <a
-          href="https://github.com/pmgoh/Jatry006/releases/latest/download/Jatry.Setup.exe"
+          href="https://github.com/pmgoh/Jatry006/releases/latest/download/Jatry-Setup.exe"
           title="Windows 앱 다운로드"
           style={{ width: 26, height: 26, borderRadius: 7, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, textDecoration: 'none' }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = '#7c6af7' }}
