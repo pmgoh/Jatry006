@@ -1672,9 +1672,10 @@ export default function Chat() {
     if (activeUserRef.current) {
       localStorage.setItem(`lastSeen_${activeUserRef.current.uid}`, String(Date.now()))
     }
-    // ref를 먼저 동기 업데이트 — 리스너가 즉시 올바른 값 참조하도록
     activeUserRef.current = user
     activeGroupRef.current = false
+    activePrivateGroupRef.current = null
+    setActivePrivateGroup(null)
     setActiveUser(user)
     setActiveGroup(false)
     setMessages([])
@@ -1688,6 +1689,8 @@ export default function Chat() {
     }
     activeUserRef.current = null
     activeGroupRef.current = true
+    activePrivateGroupRef.current = null
+    setActivePrivateGroup(null)
     // 진입 전 lastSeen을 markerTs로 보존 후, lastSeen을 now로 업데이트
     // → 다음 진입 시 이 시점 이후 메시지만 마커 표시
     const prevLastSeen = parseInt(localStorage.getItem('lastSeen___public__') || '0')
