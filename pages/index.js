@@ -106,14 +106,14 @@ export default function AuthPage() {
               </div>
             </div>
 
-            <h2 className="text-xl font-semibold mb-1" style={{ color: 'var(--text)' }}>입장하기</h2>
-            <p className="text-sm mb-8" style={{ color: 'var(--text-dim)' }}>버튼을 누르면 바로 입장해요</p>
+            <h2 className="font-bold mb-2" style={{ fontSize: 28, color: 'var(--text)' }}>입장하기</h2>
+            <p className="mb-8" style={{ fontSize: 16, color: 'var(--text-dim)' }}>버튼을 누르면 바로 입장해요</p>
 
-            {error && <p className="text-xs px-3 py-2 rounded-lg mb-3" style={{ color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>{error}</p>}
+            {error && <p className="px-3 py-2 rounded-lg mb-3" style={{ fontSize: 14, color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>{error}</p>}
 
             <button type="button" onClick={enterRoom} disabled={loading}
-              className="btn-primary w-full py-3 rounded-xl text-sm font-medium relative z-10"
-              style={{ opacity: loading ? 0.7 : 1 }}>
+              className="btn-primary w-full rounded-xl font-bold relative z-10"
+              style={{ opacity: loading ? 0.7 : 1, fontSize: 19, padding: '18px' }}>
               <span className="relative z-10">{loading ? '입장 중...' : '입장하기'}</span>
             </button>
           </div>

@@ -219,16 +219,20 @@ function formatDateTime(ts) {
 }
 
 // 메시지 옆 게시판 저장(북마크) 버튼 — 부모에 className="group" 필요
-function PinButton({ onClick }) {
+function PinButton({ saved, onClick }) {
   return (
-    <button type="button" onClick={onClick} title="게시판에 저장"
-      className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 2, display: 'inline-flex', alignItems: 'center' }}
-      onMouseEnter={(e) => { e.currentTarget.style.color = '#9b8df9' }}
-      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)' }}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <button type="button" onClick={onClick} title={saved ? '게시판에서 빼기' : '게시판에 저장'}
+      className="flex-shrink-0"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px', borderRadius: 9, cursor: 'pointer',
+        background: saved ? 'rgba(124,106,247,0.18)' : 'transparent',
+        border: saved ? '1px solid rgba(124,106,247,0.45)' : '1px solid var(--border)',
+        color: saved ? '#b3a7fb' : 'var(--text-dim)', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap',
+      }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
         <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
       </svg>
+      {saved ? '저장됨' : '저장'}
     </button>
   )
 }
@@ -530,13 +534,15 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
 
       {/* 회의 목록 */}
       <div className="px-2 pt-2 pb-1 flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between px-2 mb-1">
-          <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>회의</p>
-          <button onClick={() => onSelectPrivateGroup('__create__')}
-            style={{ width: 18, height: 18, borderRadius: 5, background: 'rgba(124,106,247,0.15)', border: 'none', cursor: 'pointer', color: '#7c6af7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, lineHeight: 1 }}
-            title="회의 만들기"
-          >+</button>
-        </div>
+        <p className="px-2 mb-2" style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-dim)', letterSpacing: '0.02em' }}>회의</p>
+        <button onClick={() => onSelectPrivateGroup('__create__')}
+          title="새 회의 만들기"
+          style={{ width: '100%', marginBottom: 8, padding: '11px', borderRadius: 11, background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.35)', color: '#b3a7fb', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(124,106,247,0.25)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(124,106,247,0.15)' }}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          새 회의 만들기
+        </button>
         {(privateGroups || []).map(g => {
           const isActive = activePrivateGroup?.id === g.id
           const unreadCount = (privateGroupUnread || {})[g.id] || 0
@@ -554,7 +560,7 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
                 {g.name?.slice(0, 1).toUpperCase() || '#'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm truncate leading-none" style={{ color: 'var(--text)', fontWeight: unreadCount > 0 ? 600 : 400 }}>{g.name}</p>
+                <p className="truncate leading-tight" style={{ fontSize: 16, color: 'var(--text)', fontWeight: unreadCount > 0 ? 700 : 500 }}>{g.name}</p>
               </div>
               {unreadCount > 0 && (
                 <div style={{ minWidth: 18, height: 18, borderRadius: 9, padding: '0 5px', background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white' }}>
@@ -656,6 +662,9 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
   const [uploading, setUploading] = useState(false)
   const [view, setView] = useState('chat') // 'chat' | 'board'
   const [boardItems, setBoardItems] = useState([])
+  const [showDelete, setShowDelete] = useState(false)
+  const [delPw, setDelPw] = useState('')
+  const [delErr, setDelErr] = useState('')
   const [markedRead, setMarkedRead] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [newMsgCount, setNewMsgCount] = useState(false)
@@ -727,6 +736,7 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
       fileKey: msg.fileKey || null,
       contentType: msg.contentType || null,
       srcSenderName: msg.senderName || '',
+      srcMsgId: msg.id || null,
       savedBy: me.uid,
       savedByName: me.displayName,
       savedAt: Date.now(),
@@ -736,6 +746,30 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
   const removeFromBoard = async (itemId) => {
     if (!group?.id) return
     await remove(ref(db, `boards/${group.id}/${itemId}`)).catch(() => {})
+  }
+
+  // 같은 메시지를 다시 누르면 저장 해제(토글). 중복 저장 방지.
+  const toggleBoard = async (msg) => {
+    const existing = boardItems.find(it => it.srcMsgId && it.srcMsgId === msg.id)
+    if (existing) await removeFromBoard(existing.id)
+    else await saveToBoard(msg)
+  }
+
+  // 회의 삭제 — 삭제 비밀번호 확인 후 방·메시지·게시판 모두 제거
+  const handleDeleteRoom = async () => {
+    setDelErr('')
+    if (!group.deletePw) { setDelErr('이 회의는 삭제 비밀번호가 없어요.'); return }
+    if (delPw !== group.deletePw) { setDelErr('삭제 비밀번호가 올바르지 않아요.'); return }
+    await remove(ref(db, `groups/${group.id}`)).catch(() => {})
+    await remove(ref(db, `rooms/${group.id}`)).catch(() => {})
+    await remove(ref(db, `boards/${group.id}`)).catch(() => {})
+    try {
+      const joined = JSON.parse(localStorage.getItem('joinedGroups') || '{}')
+      delete joined[group.id]
+      localStorage.setItem('joinedGroups', JSON.stringify(joined))
+    } catch {}
+    setShowDelete(false)
+    if (onClose) onClose()
   }
 
   if (!group || !me) return null
@@ -757,10 +791,10 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
           <p className="text-xs" style={{ color: 'var(--text-dim)' }}>코드: {group.code}</p>
         </div>
         {/* 대화 / 게시판 토글 */}
-        <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 9, background: 'var(--panel)', border: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 3, padding: 3, borderRadius: 11, background: 'var(--panel)', border: '1px solid var(--border)', flexShrink: 0 }}>
           {[['chat', '대화'], ['board', `게시판${boardItems.length ? ` ${boardItems.length}` : ''}`]].map(([key, label]) => (
             <button key={key} onClick={() => setView(key)}
-              style={{ fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+              style={{ fontSize: 14, fontWeight: 700, padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
                 background: view === key ? 'linear-gradient(135deg, #7c6af7, #4fa3f7)' : 'transparent',
                 color: view === key ? 'white' : 'var(--text-dim)' }}>
               {label}
@@ -768,8 +802,18 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
           ))}
         </div>
         <button onClick={() => setSecureMode(v => { const next = !v; localStorage.setItem('secureMode', String(next)); return next })}
+          title="보안 모드(가림)"
           style={{ width: 36, height: 20, borderRadius: 10, padding: 2, cursor: 'pointer', background: secureMode ? 'linear-gradient(135deg, #7c6af7, #4fa3f7)' : 'var(--border)', border: 'none', transition: 'background 0.2s ease', position: 'relative', flexShrink: 0 }}>
           <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'white', position: 'absolute', top: 2, transition: 'left 0.2s ease', left: secureMode ? 18 : 2, boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+        </button>
+        {/* 회의 삭제 */}
+        <button onClick={() => { setDelPw(''); setDelErr(''); setShowDelete(true) }}
+          title="회의 삭제"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-dim)', fontSize: 14, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = 'rgba(248,113,113,0.4)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-dim)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
+          삭제
         </button>
         {onClose && (
           <button onClick={onClose} className="p-1.5 rounded-lg" style={{ color: 'var(--muted)' }}
@@ -808,23 +852,24 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
               const prev = messages[i - 1], next = messages[i + 1]
               const isFirst = !prev || prev.sender !== msg.sender
               const isLast = !next || next.sender !== msg.sender
+              const saved = boardItems.some(it => it.srcMsgId && it.srcMsgId === msg.id)
               if (isMe) return (
-                <div key={msg.id} className="group" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, marginTop: isFirst ? 28 : 4 }}>
-                  <PinButton onClick={() => saveToBoard(msg)} />
-                  <div style={{ maxWidth: '62%' }}>
-                    <div style={{ padding: '10px 15px', borderRadius: isLast ? '16px 16px 4px 16px' : '16px', background: 'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(79,163,247,0.16))', border: '1px solid rgba(124,106,247,0.25)', fontSize: 15, lineHeight: 1.6, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}><MessageContent msg={msg} /></div>
-                    {isLast && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4, paddingRight: 2 }}><span style={{ fontSize: 11, color: 'var(--muted)' }}>{formatTime(msg.timestamp)}</span></div>}
+                <div key={msg.id} style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: isFirst ? 28 : 6 }}>
+                  <PinButton saved={saved} onClick={() => toggleBoard(msg)} />
+                  <div style={{ maxWidth: '64%' }}>
+                    <div style={{ padding: '11px 16px', borderRadius: isLast ? '16px 16px 4px 16px' : '16px', background: 'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(79,163,247,0.16))', border: '1px solid rgba(124,106,247,0.25)', fontSize: 16, lineHeight: 1.6, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}><MessageContent msg={msg} /></div>
+                    {isLast && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4, paddingRight: 2 }}><span style={{ fontSize: 12, color: 'var(--muted)' }}>{formatTime(msg.timestamp)}</span></div>}
                   </div>
                 </div>
               )
               return (
-                <div key={msg.id} className="group" style={{ marginTop: isFirst ? 28 : 4 }}>
-                  {isFirst && <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><Avatar name={msg.senderName || '?'} size={24} /><span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{msg.senderName}</span></div>}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ flex: 1, paddingLeft: 34, fontSize: 15, lineHeight: 1.7, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}><MessageContent msg={msg} /></div>
-                    <PinButton onClick={() => saveToBoard(msg)} />
+                <div key={msg.id} style={{ marginTop: isFirst ? 28 : 6 }}>
+                  {isFirst && <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><Avatar name={msg.senderName || '?'} size={26} /><span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{msg.senderName}</span></div>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, paddingLeft: 36, fontSize: 16, lineHeight: 1.7, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}><MessageContent msg={msg} /></div>
+                    <PinButton saved={saved} onClick={() => toggleBoard(msg)} />
                   </div>
-                  {isLast && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, paddingLeft: 34 }}>{formatTime(msg.timestamp)}</p>}
+                  {isLast && <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8, paddingLeft: 36 }}>{formatTime(msg.timestamp)}</p>}
                 </div>
               )
             })}
@@ -847,7 +892,7 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
               onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
               onKeyDown={handleKeyDown}
               placeholder={`${group.name}에 메시지 보내기...`}
-              rows={1} className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
+              rows={1} className="flex-1 bg-transparent outline-none resize-none text-base leading-relaxed"
               style={{ color: 'var(--text)', caretColor: '#7c6af7', maxHeight: 120 }}
             />
             <button onClick={handleSend} disabled={!input.trim() || sending}
@@ -880,6 +925,27 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
                 <BoardItemView key={item.id} item={item} onRemove={() => removeFromBoard(item.id)} />
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {showDelete && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDelete(false) }}>
+          <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: 28, width: 380, maxWidth: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
+            <p style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>회의 삭제</p>
+            <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 20 }}>
+              "{group.name}" 회의의 모든 대화·자료가 사라집니다. 삭제 비밀번호를 입력하세요.
+            </p>
+            <input type="password" value={delPw} onChange={(e) => setDelPw(e.target.value)}
+              placeholder="삭제 비밀번호" autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') handleDeleteRoom() }}
+              style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', fontSize: 17, color: 'var(--text)', outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
+            {delErr && <p style={{ fontSize: 14, color: '#f87171', marginBottom: 14 }}>{delErr}</p>}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowDelete(false)} style={{ flex: 1, padding: '14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-dim)', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>취소</button>
+              <button onClick={handleDeleteRoom} style={{ flex: 1, padding: '14px', borderRadius: 12, background: '#f04444', border: 'none', color: 'white', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>삭제</button>
+            </div>
           </div>
         </div>
       )}
@@ -1202,7 +1268,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
               onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
               onKeyDown={handleKeyDown}
               placeholder="All에 메시지 보내기..."
-              rows={1} className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
+              rows={1} className="flex-1 bg-transparent outline-none resize-none text-base leading-relaxed"
               style={{ color: 'var(--text)', caretColor: '#7c6af7', maxHeight: 120 }}
             />
             <button onClick={handleSend} disabled={!input.trim() || sending}
@@ -1224,62 +1290,72 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
 function GroupModal({ mode, group, onCreate, onJoin, onClose }) {
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
+  const [deletePw, setDeletePw] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const inputStyle = { width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', fontSize: 17, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }
+  const labelStyle = { display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--text-dim)', marginBottom: 7 }
 
   const handleSubmit = async () => {
     setError('')
     if (mode === 'create') {
       if (!name.trim()) return setError('회의 이름을 입력해주세요')
-      if (code.length !== 4 || !/^\d{4}$/.test(code)) return setError('4자리 숫자 코드를 입력해주세요')
+      if (code.length !== 4 || !/^\d{4}$/.test(code)) return setError('참여코드는 숫자 4자리로 입력해주세요')
+      if (deletePw.trim().length < 4) return setError('삭제 비밀번호는 4자 이상으로 정해주세요')
       setLoading(true)
-      await onCreate(name, code)
+      await onCreate(name, code, deletePw.trim())
       setLoading(false)
     } else {
-      if (code.length !== 4) return setError('4자리 코드를 입력해주세요')
+      if (code.length !== 4) return setError('참여코드 4자리를 입력해주세요')
       setLoading(true)
       const ok = await onJoin(group, code)
       setLoading(false)
-      if (!ok) setError('코드가 올바르지 않아요')
+      if (!ok) setError('참여코드가 올바르지 않아요')
     }
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: '28px 28px 24px', width: 320, boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
-        <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 20 }}>
-          {mode === 'create' ? '회의 만들기' : `"${group?.name}" 입장`}
+      <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: '28px 28px 24px', width: 380, maxWidth: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
+        <p style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>
+          {mode === 'create' ? '새 회의 만들기' : `"${group?.name}" 들어가기`}
+        </p>
+        <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 22 }}>
+          {mode === 'create' ? '참여코드(들어올 때)와 삭제 비밀번호(회의를 지울 때)를 따로 정합니다.' : '참여코드 4자리를 입력하세요.'}
         </p>
         {mode === 'create' && (
-          <div style={{ marginBottom: 14 }}>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="회의 이름 (예: 3분기 예산안)"
-              autoFocus
-              style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
-            />
+          <div style={{ marginBottom: 18 }}>
+            <label style={labelStyle}>회의 이름</label>
+            <input value={name} onChange={(e) => setName(e.target.value)}
+              placeholder="예: 3분기 예산안 회의" autoFocus style={inputStyle} />
           </div>
         )}
-        <div style={{ marginBottom: 16 }}>
-          <input
-            value={code}
+        <div style={{ marginBottom: 18 }}>
+          <label style={labelStyle}>참여코드 (숫자 4자리)</label>
+          <input value={code}
             onChange={(e) => { const v = e.target.value.replace(/\D/g,'').slice(0,4); setCode(v) }}
-            placeholder={mode === 'create' ? '4자리 코드 설정' : '4자리 코드 입력'}
-            maxLength={4}
-            inputMode="numeric"
-            autoFocus={mode === 'join'}
+            placeholder={mode === 'create' ? '들어올 때 쓸 4자리' : '4자리 입력'}
+            maxLength={4} inputMode="numeric" autoFocus={mode === 'join'}
             onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit() }}
-            style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 20, color: 'var(--text)', outline: 'none', letterSpacing: '0.3em', textAlign: 'center', boxSizing: 'border-box' }}
-          />
+            style={{ ...inputStyle, fontSize: 24, letterSpacing: '0.35em', textAlign: 'center' }} />
         </div>
-        {error && <p style={{ fontSize: 12, color: '#f87171', marginBottom: 12 }}>{error}</p>}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-dim)', fontSize: 13, cursor: 'pointer' }}>취소</button>
+        {mode === 'create' && (
+          <div style={{ marginBottom: 18 }}>
+            <label style={labelStyle}>삭제 비밀번호 (4자 이상)</label>
+            <input value={deletePw} onChange={(e) => setDeletePw(e.target.value)}
+              placeholder="이 회의를 지울 때 필요해요"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit() }}
+              style={inputStyle} />
+          </div>
+        )}
+        {error && <p style={{ fontSize: 14, color: '#f87171', marginBottom: 14 }}>{error}</p>}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-dim)', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>취소</button>
           <button onClick={handleSubmit} disabled={loading}
-            style={{ flex: 2, padding: '10px', borderRadius: 10, background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', border: 'none', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
-            {loading ? '처리 중...' : mode === 'create' ? '만들기' : '입장'}
+            style={{ flex: 2, padding: '14px', borderRadius: 12, background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', border: 'none', color: 'white', fontSize: 16, fontWeight: 700, cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
+            {loading ? '처리 중...' : mode === 'create' ? '만들기' : '들어가기'}
           </button>
         </div>
       </div>
@@ -1671,7 +1747,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
             onKeyDown={handleKeyDown}
             placeholder={`${activeUser.username}에게 메시지 보내기...`}
             rows={1}
-            className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
+            className="flex-1 bg-transparent outline-none resize-none text-base leading-relaxed"
             style={{ color: 'var(--text)', caretColor: '#7c6af7', maxHeight: 120 }}
           />
           <button onClick={handleSend} disabled={!input.trim() || sending}
@@ -2017,18 +2093,17 @@ function ChatApp({ mode = 'meeting' }) {
     }
   }
 
-  const handleCreateGroup = async (name, code) => {
+  const handleCreateGroup = async (name, code, deletePw) => {
     if (!me || !name.trim() || code.length !== 4) return
-    const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,'')
     const newGroup = await push(ref(db, 'groups'), {
-      name: name.trim(), code, createdBy: me.uid,
+      name: name.trim(), code, deletePw: deletePw || '', createdBy: me.uid,
       createdAt: Date.now(), members: { [me.uid]: true }
     })
     const joined = JSON.parse(localStorage.getItem('joinedGroups') || '{}')
     joined[newGroup.key] = true
     localStorage.setItem('joinedGroups', JSON.stringify(joined))
     setShowGroupModal(null)
-    const group = { id: newGroup.key, name: name.trim(), code, createdBy: me.uid }
+    const group = { id: newGroup.key, name: name.trim(), code, deletePw: deletePw || '', createdBy: me.uid }
     activePrivateGroupRef.current = group
     setActivePrivateGroup(group)
     setActiveGroup(false)
