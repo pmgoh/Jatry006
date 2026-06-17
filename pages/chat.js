@@ -38,7 +38,7 @@ async function cleanupOldData(db, myUid) {
       if (msg.type === 'file' && msg.fileKey && !keepKeys.has(msg.fileKey)) await deleteFile(msg.fileKey)
     }
 
-    // 안건방 ID 집합 (DM과 구분 — DM roomId는 내 UID 포함, 안건방은 groups 키)
+    // 회의 ID 집합 (DM과 구분 — DM roomId는 내 UID 포함, 회의은 groups 키)
     const groupIds = new Set()
     const groupsSnap = await get(ref(db, 'groups'))
     if (groupsSnap.exists()) for (const gid of Object.keys(groupsSnap.val())) groupIds.add(gid)
@@ -54,12 +54,12 @@ async function cleanupOldData(db, myUid) {
       }
     }
 
-    // 그 외 방(DM·안건방) 7일 이전 메시지 삭제
+    // 그 외 방(DM·회의) 7일 이전 메시지 삭제
     const roomsSnap = await get(ref(db, 'rooms'))
     if (roomsSnap.exists()) {
       for (const [roomId, room] of Object.entries(roomsSnap.val())) {
         if (roomId === '__public__') continue
-        // 내 DM 방이거나 안건방인 경우만 정리 대상
+        // 내 DM 방이거나 회의인 경우만 정리 대상
         if (!roomId.includes(myUid) && !groupIds.has(roomId)) continue
         if (!room.messages) continue
         for (const [msgId, msg] of Object.entries(room.messages)) {
@@ -439,7 +439,7 @@ function ProfileArea({ meUser, onLogout, onRenameNotify }) {
   )
 }
 
-function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers, activeGroup, onSelectGroup, groupUnread, onClose, onRenameNotify, privateGroups, activePrivateGroup, onSelectPrivateGroup, privateGroupUnread }) {
+function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers, activeGroup, onSelectGroup, groupUnread, onClose, onRenameNotify, privateGroups, activePrivateGroup, onSelectPrivateGroup, privateGroupUnread, mode = 'meeting' }) {
   const otherUsers = users.filter((u) => u.uid !== me?.uid)
   const meUser = users.find((u) => u.uid === me?.uid)
 
@@ -477,6 +477,18 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
         )}
       </div>
 
+      {/* 메인(회의) 모드: 전체 + 회의 목록 / DM 모드에선 숨김 */}
+      <div className="px-2 pt-2 flex-shrink-0">
+        <a href={mode === 'dm' ? '/chat' : '/dm'}
+          className="block text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+          style={{ color: 'var(--muted)', textDecoration: 'none' }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-dim)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}>
+          {mode === 'dm' ? '← 회의 채널로' : '1:1 대화 →'}
+        </a>
+      </div>
+
+      {mode !== 'dm' && (<>
       {/* All */}
       <div className="px-2 pt-3 pb-1 flex-shrink-0">
         <button onClick={() => onSelectGroup()}
@@ -516,13 +528,13 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
         </button>
       </div>
 
-      {/* 비공개 그룹 목록 */}
-      <div className="px-2 pt-2 pb-1 flex-shrink-0">
+      {/* 회의 목록 */}
+      <div className="px-2 pt-2 pb-1 flex-1 overflow-y-auto">
         <div className="flex items-center justify-between px-2 mb-1">
-          <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>안건방</p>
+          <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>회의</p>
           <button onClick={() => onSelectPrivateGroup('__create__')}
             style={{ width: 18, height: 18, borderRadius: 5, background: 'rgba(124,106,247,0.15)', border: 'none', cursor: 'pointer', color: '#7c6af7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, lineHeight: 1 }}
-            title="안건방 만들기"
+            title="회의 만들기"
           >+</button>
         </div>
         {(privateGroups || []).map(g => {
@@ -553,7 +565,9 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
           )
         })}
       </div>
+      </>)}
 
+      {mode === 'dm' && (<>
       <div className="px-4 pt-3 pb-2 flex-shrink-0">
         <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>
           {otherUsers.filter(u => u.online).length}명 온라인
@@ -615,6 +629,7 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
           })
         )}
       </div>
+      </>)}
 
       {meUser
         ? <ProfileArea meUser={meUser} onLogout={onLogout} onRenameNotify={onRenameNotify} />
@@ -1215,7 +1230,7 @@ function GroupModal({ mode, group, onCreate, onJoin, onClose }) {
   const handleSubmit = async () => {
     setError('')
     if (mode === 'create') {
-      if (!name.trim()) return setError('안건 이름을 입력해주세요')
+      if (!name.trim()) return setError('회의 이름을 입력해주세요')
       if (code.length !== 4 || !/^\d{4}$/.test(code)) return setError('4자리 숫자 코드를 입력해주세요')
       setLoading(true)
       await onCreate(name, code)
@@ -1234,14 +1249,14 @@ function GroupModal({ mode, group, onCreate, onJoin, onClose }) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: '28px 28px 24px', width: 320, boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
         <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 20 }}>
-          {mode === 'create' ? '안건방 만들기' : `"${group?.name}" 입장`}
+          {mode === 'create' ? '회의 만들기' : `"${group?.name}" 입장`}
         </p>
         {mode === 'create' && (
           <div style={{ marginBottom: 14 }}>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="안건 이름 (예: 3분기 예산안)"
+              placeholder="회의 이름 (예: 3분기 예산안)"
               autoFocus
               style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
             />
@@ -1272,15 +1287,19 @@ function GroupModal({ mode, group, onCreate, onJoin, onClose }) {
   )
 }
 
-function EmptyState() {
+function EmptyState({ mode = 'meeting' }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center relative" style={{ background: 'var(--night)' }}>
       <div style={{ position: 'absolute', top: '40%', left: '50%', transform: 'translate(-50%,-50%)', width: 400, height: 400, background: 'radial-gradient(circle, rgba(124,106,247,0.04) 0%, transparent 70%)', pointerEvents: 'none' }} />
       <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--panel)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       </div>
-      <p className="text-sm font-medium mt-4 mb-1" style={{ color: 'var(--text-dim)' }}>대화 상대를 선택하세요</p>
-      <p className="text-xs" style={{ color: 'var(--muted)' }}>왼쪽 목록에서 유저를 클릭하면 채팅이 시작돼요</p>
+      <p className="text-sm font-medium mt-4 mb-1" style={{ color: 'var(--text-dim)' }}>
+        {mode === 'dm' ? '대화 상대를 선택하세요' : '회의를 선택하거나 새로 만드세요'}
+      </p>
+      <p className="text-xs" style={{ color: 'var(--muted)' }}>
+        {mode === 'dm' ? '왼쪽 목록에서 유저를 클릭하면 채팅이 시작돼요' : '왼쪽 "전체"나 회의 채널을 선택하세요'}
+      </p>
     </div>
   )
 }
@@ -1674,7 +1693,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
   )
 }
 
-export default function Chat() {
+function ChatApp({ mode = 'meeting' }) {
   const router = useRouter()
   const [me, setMe] = useState(null)
   const [users, setUsers] = useState([])
@@ -1949,7 +1968,7 @@ export default function Chat() {
     setMessages([])
   }
 
-  // 안건방 로드 — 방 자체는 영구(만료 없음). 방 안의 메시지만 7일 후 정리됨.
+  // 회의 로드 — 방 자체는 영구(만료 없음). 방 안의 메시지만 7일 후 정리됨.
   useEffect(() => {
     if (!me) return
     const unsub = onValue(ref(db, 'groups'), (snap) => {
@@ -2074,7 +2093,7 @@ export default function Chat() {
             activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread}
             onClose={() => setSidebarOpen(false)} onRenameNotify={handleRenameNotify}
             privateGroups={privateGroups} activePrivateGroup={activePrivateGroup}
-            onSelectPrivateGroup={handleSelectPrivateGroup} privateGroupUnread={privateGroupUnread} />
+            onSelectPrivateGroup={handleSelectPrivateGroup} privateGroupUnread={privateGroupUnread} mode={mode} />
         </div>
         {activePrivateGroup
           ? <PrivateGroupPanel me={me} group={activePrivateGroup} messages={privateGroupMessages} onClose={handleCloseChat} />
@@ -2092,7 +2111,7 @@ export default function Chat() {
                 setNotifySettings(next)
                 localStorage.setItem('notifySettings', JSON.stringify(next))
               }} />
-            : <EmptyState />
+            : <EmptyState mode={mode} />
         }
       </div>
       <div className="flex md:hidden h-full flex-col">
@@ -2101,7 +2120,7 @@ export default function Chat() {
               onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers}
               activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread} onRenameNotify={handleRenameNotify}
               privateGroups={privateGroups} activePrivateGroup={activePrivateGroup}
-              onSelectPrivateGroup={handleSelectPrivateGroup} privateGroupUnread={privateGroupUnread} />
+              onSelectPrivateGroup={handleSelectPrivateGroup} privateGroupUnread={privateGroupUnread} mode={mode} />
           : activePrivateGroup
             ? <PrivateGroupPanel me={me} group={activePrivateGroup} messages={privateGroupMessages}
                 onBack={() => { setMobileView('list'); setActivePrivateGroup(null) }} />
@@ -2177,3 +2196,9 @@ export default function Chat() {
     </div>
   )
 }
+
+// /chat = 회의 모드(전체+회의), /dm = 1:1 대화 모드. DM 기능은 보존하되 하위주소로 분리.
+export default function Chat() {
+  return <ChatApp mode="meeting" />
+}
+export { ChatApp }
