@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth'
 import { ref, onValue, set, push, onDisconnect, remove, get } from 'firebase/database'
+import { uploadFile, deleteFile, MAX_UPLOAD_BYTES } from '../lib/storage'
 
 const APP_VERSION = '1.2'
 
@@ -18,39 +19,59 @@ function formatLastSeen(ts) {
 }
 
 // 알림 권한 요청
-// 어제 날짜 데이터 정리
+// 7일 지난 메시지 정리. 단 게시판(boards)에 저장된 항목과 그 R2 파일은 보존(영구).
 async function cleanupOldData(db, myUid) {
   try {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const todayTs = today.getTime()
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
 
-    // __public__ 방 어제 메시지 삭제
+    // 게시판에 저장된 R2 파일 키 수집 → 이 키들은 삭제 금지
+    const keepKeys = new Set()
+    const boardsSnap = await get(ref(db, 'boards'))
+    if (boardsSnap.exists()) {
+      for (const room of Object.values(boardsSnap.val())) {
+        for (const item of Object.values(room || {})) {
+          if (item && item.fileKey) keepKeys.add(item.fileKey)
+        }
+      }
+    }
+    const purgeFile = async (msg) => {
+      if (msg.type === 'file' && msg.fileKey && !keepKeys.has(msg.fileKey)) await deleteFile(msg.fileKey)
+    }
+
+    // 안건방 ID 집합 (DM과 구분 — DM roomId는 내 UID 포함, 안건방은 groups 키)
+    const groupIds = new Set()
+    const groupsSnap = await get(ref(db, 'groups'))
+    if (groupsSnap.exists()) for (const gid of Object.keys(groupsSnap.val())) groupIds.add(gid)
+
+    // __public__ 방 7일 이전 메시지 삭제
     const pubSnap = await get(ref(db, 'rooms/__public__/messages'))
     if (pubSnap.exists()) {
       for (const [msgId, msg] of Object.entries(pubSnap.val())) {
-        if (msg.timestamp && msg.timestamp < todayTs) {
+        if (msg.timestamp && msg.timestamp < sevenDaysAgo) {
+          await purgeFile(msg)
           await remove(ref(db, `rooms/__public__/messages/${msgId}`)).catch(() => {})
         }
       }
     }
 
-    // 내 UID가 포함된 DM 방만 삭제
+    // 그 외 방(DM·안건방) 7일 이전 메시지 삭제
     const roomsSnap = await get(ref(db, 'rooms'))
     if (roomsSnap.exists()) {
       for (const [roomId, room] of Object.entries(roomsSnap.val())) {
         if (roomId === '__public__') continue
-        if (!roomId.includes(myUid)) continue  // 내 방만
+        // 내 DM 방이거나 안건방인 경우만 정리 대상
+        if (!roomId.includes(myUid) && !groupIds.has(roomId)) continue
         if (!room.messages) continue
         for (const [msgId, msg] of Object.entries(room.messages)) {
-          if (msg.timestamp && msg.timestamp < todayTs) {
+          if (msg.timestamp && msg.timestamp < sevenDaysAgo) {
+            await purgeFile(msg)
             await remove(ref(db, `rooms/${roomId}/messages/${msgId}`)).catch(() => {})
           }
         }
       }
     }
   } catch(e) {
-    // 권한 오류는 무시
+    // 무시
   }
 }
 
@@ -65,7 +86,8 @@ async function requestNotificationPermission() {
 function sendSilentNotification() {
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      const n = new Notification('💡', {
+      const n = new Notification('새 메시지', {
+        body: '필자닷컴 회의실에 새 메시지가 있어요',
         silent: true,
         requireInteraction: false,
         tag: 'msng-msg',
@@ -80,9 +102,158 @@ function formatTime(ts) {
   return new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
 }
 
-function isSameDay(ts) {
-  const d = new Date(ts), t = new Date()
-  return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate()
+// 메시지는 7일간 계속 보존(당일 리셋 아님). 7일 지나면 cleanupOldData가 삭제.
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+function within7Days(ts) {
+  return !!ts && (Date.now() - ts) < WEEK_MS
+}
+
+// 메시지 본문 내 URL을 클릭 가능한 링크로 변환
+const URL_RE = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi
+function Linkify({ text }) {
+  if (!text) return null
+  // 캡처 그룹 1개로 split하면 홀수 인덱스가 URL
+  const parts = String(text).split(URL_RE)
+  return parts.map((part, i) => {
+    if (i % 2 === 1) {
+      const href = /^https?:\/\//i.test(part) ? part : `https://${part}`
+      return (
+        <a key={i} href={href} target="_blank" rel="noopener noreferrer"
+          style={{ color: '#9b8df9', textDecoration: 'underline', wordBreak: 'break-all' }}>
+          {part}
+        </a>
+      )
+    }
+    return part
+  })
+}
+
+function formatBytes(n) {
+  if (!n && n !== 0) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+// 파일을 R2에 올리고 해당 방에 파일 메시지로 전송
+async function sendFileToRoom(roomId, file, me) {
+  const { url, key } = await uploadFile(file, roomId)
+  await push(ref(db, `rooms/${roomId}/messages`), {
+    sender: me.uid,
+    senderName: me.displayName,
+    type: 'file',
+    fileName: file.name,
+    fileSize: file.size,
+    fileUrl: url,
+    fileKey: key,
+    contentType: file.type || '',
+    timestamp: Date.now(),
+  })
+}
+
+// 첨부(클립) 버튼 — 파일 선택/드롭을 처리하는 공용 컴포넌트
+function AttachButton({ uploading, onPick }) {
+  const inputRef = useRef(null)
+  return (
+    <>
+      <input ref={inputRef} type="file" multiple style={{ display: 'none' }}
+        onChange={(e) => { const fs = Array.from(e.target.files || []); e.target.value = ''; if (fs.length) onPick(fs) }} />
+      <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading}
+        title="파일 첨부"
+        className="flex-shrink-0 rounded-xl flex items-center justify-center"
+        style={{ width: 32, height: 32, background: 'transparent', border: 'none', cursor: uploading ? 'default' : 'pointer', color: uploading ? '#7c6af7' : 'var(--muted)' }}
+        onMouseEnter={(e) => { if (!uploading) e.currentTarget.style.color = '#7c6af7' }}
+        onMouseLeave={(e) => { if (!uploading) e.currentTarget.style.color = 'var(--muted)' }}>
+        {uploading ? (
+          <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--border)', borderTopColor: '#7c6af7', animation: 'spin 0.8s linear infinite' }} />
+        ) : (
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+          </svg>
+        )}
+      </button>
+    </>
+  )
+}
+
+// 첨부 파일 렌더링 — 이미지는 미리보기, 그 외는 다운로드 카드
+function FileAttachment({ msg }) {
+  const isImage = (msg.contentType || '').startsWith('image/')
+  if (isImage) {
+    return (
+      <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
+        <img src={msg.fileUrl} alt={msg.fileName || '이미지'}
+          style={{ maxWidth: 'min(280px, 100%)', maxHeight: 280, borderRadius: 10, display: 'block', border: '1px solid var(--border)' }} />
+        <span style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', marginTop: 4, wordBreak: 'break-all' }}>
+          {msg.fileName} {msg.fileSize ? `· ${formatBytes(msg.fileSize)}` : ''}
+        </span>
+      </a>
+    )
+  }
+  return (
+    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" download
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', textDecoration: 'none', minWidth: 200, maxWidth: 320 }}>
+      <div style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9b8df9" strokeWidth="2">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" />
+        </svg>
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{msg.fileName || '파일'}</p>
+        <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0 }}>{formatBytes(msg.fileSize)} · 다운로드</p>
+      </div>
+    </a>
+  )
+}
+
+// 메시지 본문 — 파일이면 첨부 카드, 아니면 텍스트(링크 변환)
+function MessageContent({ msg }) {
+  if (msg.type === 'file') return <FileAttachment msg={msg} />
+  return <Linkify text={msg.text} />
+}
+
+function formatDateTime(ts) {
+  if (!ts) return ''
+  const d = new Date(ts)
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`
+}
+
+// 메시지 옆 게시판 저장(북마크) 버튼 — 부모에 className="group" 필요
+function PinButton({ onClick }) {
+  return (
+    <button type="button" onClick={onClick} title="게시판에 저장"
+      className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 2, display: 'inline-flex', alignItems: 'center' }}
+      onMouseEnter={(e) => { e.currentTarget.style.color = '#9b8df9' }}
+      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)' }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
+      </svg>
+    </button>
+  )
+}
+
+// 게시판(저장소) 항목 카드 — 직접 삭제 전까지 영구 보존
+function BoardItemView({ item, onRemove }) {
+  return (
+    <div style={{ padding: 14, borderRadius: 12, background: 'var(--panel)', border: '1px solid var(--border)', marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          {item.savedByName || '?'} 저장 · {formatDateTime(item.savedAt)}
+        </span>
+        <button onClick={onRemove} title="게시판에서 삭제"
+          style={{ fontSize: 11, color: 'var(--muted)', background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '2px 8px', cursor: 'pointer', flexShrink: 0 }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = 'rgba(248,113,113,0.4)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+          삭제
+        </button>
+      </div>
+      {item.kind === 'file'
+        ? <FileAttachment msg={item} />
+        : <div style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}><Linkify text={item.text} /></div>}
+      {item.srcSenderName && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>원본: {item.srcSenderName}</p>}
+    </div>
+  )
 }
 
 function Avatar({ name, size = 36 }) {
@@ -96,24 +267,6 @@ function Avatar({ name, size = 36 }) {
       fontSize: size * 0.4, fontWeight: 600, color: 'white',
     }}>
       {name[0].toUpperCase()}
-    </div>
-  )
-}
-
-function AIIcon({ size = 28 }) {
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: size * 0.3, flexShrink: 0,
-      background: 'linear-gradient(135deg, #1e1b3a, #1a2540)',
-      border: '1px solid rgba(124,106,247,0.3)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: '0 0 8px rgba(124,106,247,0.2)',
-    }}>
-      <svg width={size * 0.5} height={size * 0.5} viewBox="0 0 16 16" fill="none">
-        <circle cx="8" cy="8" r="3" stroke="#7c6af7" strokeWidth="1.2"/>
-        <path d="M8 1v2M8 13v2M1 8h2M13 8h2" stroke="#7c6af7" strokeWidth="1.2" strokeLinecap="round"/>
-        <path d="M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42" stroke="#4fa3f7" strokeWidth="1" strokeLinecap="round" opacity="0.6"/>
-      </svg>
     </div>
   )
 }
@@ -148,7 +301,7 @@ function AIMessageBubble({ msg, isFirst, isLast }) {
       {/* 발신자 헤더 */}
       {isFirst && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <AIIcon size={24} />
+          <Avatar name={msg.senderName || '?'} size={24} />
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.01em' }}>
             {msg.senderName}
           </span>
@@ -165,7 +318,7 @@ function AIMessageBubble({ msg, isFirst, isLast }) {
         letterSpacing: '-0.005em',
         fontWeight: 400,
       }}>
-        {msg.text}
+        <MessageContent msg={msg} />
       </div>
       {isLast && (
         <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, paddingLeft: 34, letterSpacing: '0.01em' }}>
@@ -192,7 +345,7 @@ function MyMessageBubble({ msg, isFirst, isLast, otherLastRead }) {
           whiteSpace: 'pre-wrap',
           letterSpacing: '-0.005em',
         }}>
-          {msg.text}
+          <MessageContent msg={msg} />
         </div>
         {isLast && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, paddingRight: 2, gap: 3 }}>
@@ -290,36 +443,15 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
   const otherUsers = users.filter((u) => u.uid !== me?.uid)
   const meUser = users.find((u) => u.uid === me?.uid)
 
-  const [countdown, setCountdown] = useState('')
-  useEffect(() => {
-    const tick = () => {
-      const now = new Date()
-      const midnight = new Date()
-      midnight.setHours(24, 0, 0, 0)
-      const diff = midnight - now
-      const h = Math.floor(diff / 3600000)
-      const m = Math.floor((diff % 3600000) / 60000)
-      setCountdown(h > 0 ? `${h}시간 ${m}분` : `${m}분`)
-    }
-    tick()
-    const id = setInterval(tick, 60000)
-    return () => clearInterval(id)
-  }, [])
-
-  const todayLabel = (() => {
-    const d = new Date()
-    return `${d.getMonth()+1}/${d.getDate()}`
-  })()
-
   return (
     <aside className="flex flex-col h-full" style={{ background: 'var(--surface)', borderRight: '1px solid var(--border)' }}>
       <div className="flex items-center gap-2.5 px-4 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
-        <div style={{ width: 26, height: 26, borderRadius: 7, background: '#5F50D2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16, color: 'white', fontFamily: 'Arial, sans-serif' }}>
-          J
+        <div style={{ width: 26, height: 26, borderRadius: 7, background: '#5F50D2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: 'white' }}>
+          필
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold leading-none" style={{ color: 'var(--text)' }}>Jatry</p>
-          <p className="mt-0.5" style={{ color: 'var(--muted)', fontSize: 10 }}>AI 프로젝트 06번째</p>
+          <p className="text-xs font-semibold leading-none" style={{ color: 'var(--text)' }}>필자닷컴 회의실</p>
+          <p className="mt-0.5" style={{ color: 'var(--muted)', fontSize: 10 }}>회의 자료 공유</p>
         </div>
         {/* 다운로드 버튼 */}
         <a
@@ -373,7 +505,7 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
               All
             </p>
             <p className="text-xs" style={{ color: groupUnread > 0 ? 'rgba(124,106,247,0.9)' : 'var(--muted)', fontWeight: groupUnread > 0 ? 500 : 400 }}>
-              {groupUnread > 0 ? `${groupUnread}개의 새 메시지` : `오늘 ${todayLabel} · ${countdown} 후 초기화`}
+              {groupUnread > 0 ? `${groupUnread}개의 새 메시지` : '최근 7일간 보관'}
             </p>
           </div>
           {groupUnread > 0 && (
@@ -387,10 +519,10 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
       {/* 비공개 그룹 목록 */}
       <div className="px-2 pt-2 pb-1 flex-shrink-0">
         <div className="flex items-center justify-between px-2 mb-1">
-          <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>그룹</p>
+          <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>안건방</p>
           <button onClick={() => onSelectPrivateGroup('__create__')}
             style={{ width: 18, height: 18, borderRadius: 5, background: 'rgba(124,106,247,0.15)', border: 'none', cursor: 'pointer', color: '#7c6af7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, lineHeight: 1 }}
-            title="그룹 만들기"
+            title="안건방 만들기"
           >+</button>
         </div>
         {(privateGroups || []).map(g => {
@@ -424,7 +556,7 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
 
       <div className="px-4 pt-3 pb-2 flex-shrink-0">
         <p className="text-xs font-medium tracking-wider uppercase" style={{ color: 'var(--muted)' }}>
-          오늘 · {otherUsers.filter(u => u.online).length}명 온라인
+          {otherUsers.filter(u => u.online).length}명 온라인
         </p>
       </div>
 
@@ -506,6 +638,9 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
 function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [view, setView] = useState('chat') // 'chat' | 'board'
+  const [boardItems, setBoardItems] = useState([])
   const [markedRead, setMarkedRead] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [newMsgCount, setNewMsgCount] = useState(false)
@@ -545,6 +680,49 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
 
   const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }
 
+  const handlePickFiles = async (files) => {
+    if (!me || uploading) return
+    setUploading(true)
+    try { for (const f of files) await sendFileToRoom(group.id, f, me) }
+    catch (e) { alert(e.message || '업로드 실패') }
+    finally { setUploading(false); inputRef.current?.focus() }
+  }
+
+  // 게시판(저장소) 항목 구독 — 최신순
+  useEffect(() => {
+    if (!group?.id) return
+    const unsub = onValue(ref(db, `boards/${group.id}`), (snap) => {
+      const data = snap.val()
+      if (!data) { setBoardItems([]); return }
+      const list = Object.entries(data).map(([id, v]) => ({ id, ...v }))
+        .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))
+      setBoardItems(list)
+    })
+    return () => unsub()
+  }, [group?.id])
+
+  const saveToBoard = async (msg) => {
+    if (!me || !group?.id) return
+    await push(ref(db, `boards/${group.id}`), {
+      kind: msg.type === 'file' ? 'file' : 'text',
+      text: msg.text || '',
+      fileName: msg.fileName || null,
+      fileSize: msg.fileSize || null,
+      fileUrl: msg.fileUrl || null,
+      fileKey: msg.fileKey || null,
+      contentType: msg.contentType || null,
+      srcSenderName: msg.senderName || '',
+      savedBy: me.uid,
+      savedByName: me.displayName,
+      savedAt: Date.now(),
+    })
+  }
+
+  const removeFromBoard = async (itemId) => {
+    if (!group?.id) return
+    await remove(ref(db, `boards/${group.id}/${itemId}`)).catch(() => {})
+  }
+
   if (!group || !me) return null
 
   return (
@@ -563,6 +741,17 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
           <p className="text-sm font-medium leading-none mb-0.5" style={{ color: 'var(--text)' }}>{group.name}</p>
           <p className="text-xs" style={{ color: 'var(--text-dim)' }}>코드: {group.code}</p>
         </div>
+        {/* 대화 / 게시판 토글 */}
+        <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 9, background: 'var(--panel)', border: '1px solid var(--border)', flexShrink: 0 }}>
+          {[['chat', '대화'], ['board', `게시판${boardItems.length ? ` ${boardItems.length}` : ''}`]].map(([key, label]) => (
+            <button key={key} onClick={() => setView(key)}
+              style={{ fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                background: view === key ? 'linear-gradient(135deg, #7c6af7, #4fa3f7)' : 'transparent',
+                color: view === key ? 'white' : 'var(--text-dim)' }}>
+              {label}
+            </button>
+          ))}
+        </div>
         <button onClick={() => setSecureMode(v => { const next = !v; localStorage.setItem('secureMode', String(next)); return next })}
           style={{ width: 36, height: 20, borderRadius: 10, padding: 2, cursor: 'pointer', background: secureMode ? 'linear-gradient(135deg, #7c6af7, #4fa3f7)' : 'var(--border)', border: 'none', transition: 'background 0.2s ease', position: 'relative', flexShrink: 0 }}>
           <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'white', position: 'absolute', top: 2, transition: 'left 0.2s ease', left: secureMode ? 18 : 2, boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
@@ -576,6 +765,8 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
         )}
       </div>
 
+      {view === 'chat' ? (
+       <>
       {/* 메시지 */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}
         onMouseEnter={() => setIsHoveringMessages(true)}
@@ -603,17 +794,21 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
               const isFirst = !prev || prev.sender !== msg.sender
               const isLast = !next || next.sender !== msg.sender
               if (isMe) return (
-                <div key={msg.id} style={{ display: 'flex', justifyContent: 'flex-end', marginTop: isFirst ? 28 : 4 }}>
+                <div key={msg.id} className="group" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, marginTop: isFirst ? 28 : 4 }}>
+                  <PinButton onClick={() => saveToBoard(msg)} />
                   <div style={{ maxWidth: '62%' }}>
-                    <div style={{ padding: '10px 15px', borderRadius: isLast ? '16px 16px 4px 16px' : '16px', background: 'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(79,163,247,0.16))', border: '1px solid rgba(124,106,247,0.25)', fontSize: 15, lineHeight: 1.6, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                    <div style={{ padding: '10px 15px', borderRadius: isLast ? '16px 16px 4px 16px' : '16px', background: 'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(79,163,247,0.16))', border: '1px solid rgba(124,106,247,0.25)', fontSize: 15, lineHeight: 1.6, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}><MessageContent msg={msg} /></div>
                     {isLast && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4, paddingRight: 2 }}><span style={{ fontSize: 11, color: 'var(--muted)' }}>{formatTime(msg.timestamp)}</span></div>}
                   </div>
                 </div>
               )
               return (
-                <div key={msg.id} style={{ marginTop: isFirst ? 28 : 4 }}>
+                <div key={msg.id} className="group" style={{ marginTop: isFirst ? 28 : 4 }}>
                   {isFirst && <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><Avatar name={msg.senderName || '?'} size={24} /><span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{msg.senderName}</span></div>}
-                  <div style={{ paddingLeft: 34, fontSize: 15, lineHeight: 1.7, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ flex: 1, paddingLeft: 34, fontSize: 15, lineHeight: 1.7, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}><MessageContent msg={msg} /></div>
+                    <PinButton onClick={() => saveToBoard(msg)} />
+                  </div>
                   {isLast && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, paddingLeft: 34 }}>{formatTime(msg.timestamp)}</p>}
                 </div>
               )
@@ -629,7 +824,10 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
         onMouseLeave={() => setIsHoveringMessages(false)}
         style={{ filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease` }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
-          <div className="glow-border flex items-center gap-2.5 px-4 py-3 rounded-2xl" style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}>
+          <div className="glow-border flex items-center gap-2.5 px-4 py-3 rounded-2xl" style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); const fs = Array.from(e.dataTransfer.files || []); if (fs.length) handlePickFiles(fs) }}>
+            <AttachButton uploading={uploading} onPick={handlePickFiles} />
             <textarea ref={inputRef} value={input}
               onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
               onKeyDown={handleKeyDown}
@@ -649,6 +847,27 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
           <p className="text-center mt-1.5 hidden md:block" style={{ color: 'var(--muted)', fontSize: 11 }}>Enter 전송 · Shift+Enter 줄바꿈</p>
         </div>
       </div>
+       </>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-4 py-6">
+          <div style={{ maxWidth: 720, margin: '0 auto' }}>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+              직접 삭제하기 전까지 영구 보관돼요. 메시지 위의 북마크 아이콘으로 저장하세요.
+            </p>
+            {boardItems.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 240, textAlign: 'center' }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.5"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+                <p style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 10 }}>저장된 자료가 없어요</p>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>중요한 파일·링크·메시지를 게시판에 저장해 보세요</p>
+              </div>
+            ) : (
+              boardItems.map(item => (
+                <BoardItemView key={item.id} item={item} onRemove={() => removeFromBoard(item.id)} />
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -656,6 +875,7 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
 function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, onClose }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const lastReadRef = useRef(null)
@@ -738,6 +958,14 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
   }
 
   const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }
+
+  const handlePickFiles = async (files) => {
+    if (!me || uploading) return
+    setUploading(true)
+    try { for (const f of files) await sendFileToRoom('__public__', f, me) }
+    catch (e) { alert(e.message || '업로드 실패') }
+    finally { setUploading(false); inputRef.current?.focus() }
+  }
 
   if (!me) return null
 
@@ -902,7 +1130,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: isFirst ? 28 : 4 }}>
                   <div style={{ maxWidth: '62%' }}>
                     <div style={{ padding: '10px 15px', borderRadius: isLast ? '16px 16px 4px 16px' : '16px', background: 'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(79,163,247,0.16))', border: '1px solid rgba(124,106,247,0.25)', fontSize: 15, lineHeight: 1.6, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                      {msg.text}
+                      <MessageContent msg={msg} />
                     </div>
                     {isLast && (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, paddingRight: 2, gap: 3 }}>
@@ -915,7 +1143,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
               )
             }
 
-            // 상대방 메시지 — AI 스타일
+            // 상대방 메시지
             return (
               <div key={msg.id}>
                 {showMark && (
@@ -933,7 +1161,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
                   </div>
                 )}
                 <div style={{ paddingLeft: 34, fontSize: 15, lineHeight: 1.7, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                  {msg.text}
+                  <MessageContent msg={msg} />
                 </div>
                 {isLast && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, paddingLeft: 34 }}>{formatTime(msg.timestamp)}</p>}
               </div>
@@ -951,14 +1179,10 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
         onMouseLeave={() => setIsHoveringMessages(false)}
         style={{ filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease` }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
-          <div className="glow-border flex items-center gap-2.5 px-4 py-3 rounded-2xl" style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}>
-            <div className="flex-shrink-0">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--muted)' }}>
-                <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" stroke="currentColor" strokeWidth="1.5"/>
-                <path d="M8 13s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                <circle cx="9" cy="9.5" r="1" fill="currentColor"/><circle cx="15" cy="9.5" r="1" fill="currentColor"/>
-              </svg>
-            </div>
+          <div className="glow-border flex items-center gap-2.5 px-4 py-3 rounded-2xl" style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); const fs = Array.from(e.dataTransfer.files || []); if (fs.length) handlePickFiles(fs) }}>
+            <AttachButton uploading={uploading} onPick={handlePickFiles} />
             <textarea ref={inputRef} value={input}
               onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
               onKeyDown={handleKeyDown}
@@ -991,7 +1215,7 @@ function GroupModal({ mode, group, onCreate, onJoin, onClose }) {
   const handleSubmit = async () => {
     setError('')
     if (mode === 'create') {
-      if (!name.trim()) return setError('그룹 이름을 입력해주세요')
+      if (!name.trim()) return setError('안건 이름을 입력해주세요')
       if (code.length !== 4 || !/^\d{4}$/.test(code)) return setError('4자리 숫자 코드를 입력해주세요')
       setLoading(true)
       await onCreate(name, code)
@@ -1010,14 +1234,14 @@ function GroupModal({ mode, group, onCreate, onJoin, onClose }) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: '28px 28px 24px', width: 320, boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
         <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 20 }}>
-          {mode === 'create' ? '그룹 만들기' : `"${group?.name}" 입장`}
+          {mode === 'create' ? '안건방 만들기' : `"${group?.name}" 입장`}
         </p>
         {mode === 'create' && (
           <div style={{ marginBottom: 14 }}>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="그룹 이름"
+              placeholder="안건 이름 (예: 3분기 예산안)"
               autoFocus
               style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
             />
@@ -1052,7 +1276,9 @@ function EmptyState() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center relative" style={{ background: 'var(--night)' }}>
       <div style={{ position: 'absolute', top: '40%', left: '50%', transform: 'translate(-50%,-50%)', width: 400, height: 400, background: 'radial-gradient(circle, rgba(124,106,247,0.04) 0%, transparent 70%)', pointerEvents: 'none' }} />
-      <AIIcon size={44} />
+      <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--panel)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      </div>
       <p className="text-sm font-medium mt-4 mb-1" style={{ color: 'var(--text-dim)' }}>대화 상대를 선택하세요</p>
       <p className="text-xs" style={{ color: 'var(--muted)' }}>왼쪽 목록에서 유저를 클릭하면 채팅이 시작돼요</p>
     </div>
@@ -1062,6 +1288,7 @@ function EmptyState() {
 function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notifyEnabled, onToggleNotify, lastReadMark, liveUsers }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const lastReadRef = useRef(null)
@@ -1159,6 +1386,15 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
+  const handlePickFiles = async (files) => {
+    if (!me || !activeUser || uploading) return
+    const roomId = [me.uid, activeUser.uid].sort().join('_')
+    setUploading(true)
+    try { for (const f of files) await sendFileToRoom(roomId, f, me) }
+    catch (e) { alert(e.message || '업로드 실패') }
+    finally { setUploading(false); inputRef.current?.focus() }
+  }
+
   // 상대방의 lastRead (내 메시지가 읽혔는지 기준)
 
   return (
@@ -1231,7 +1467,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
             </svg>
           </button>
         )}
-        <AIIcon size={34} />
+        <Avatar name={activeUser.username} size={34} />
         <div className="flex-1">
           <p className="text-sm font-medium leading-none mb-0.5" style={{ color: 'var(--text)' }}>{activeUser.username}</p>
           {(() => {
@@ -1352,7 +1588,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
         <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 24px' }}>
           {messages.length === 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, textAlign: 'center' }}>
-              <AIIcon size={36} />
+              <Avatar name={activeUser.username} size={44} />
               <p style={{ fontSize: 14, color: 'var(--text-dim)', marginTop: 12, marginBottom: 4 }}>{activeUser.username}와의 대화</p>
               <p style={{ fontSize: 12, color: 'var(--muted)' }}>첫 메시지를 보내보세요</p>
             </div>
@@ -1403,14 +1639,10 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
         style={{ filter: secureMode && !isHoveringMessages ? `blur(${blurAmount}px)` : 'blur(0px)', transition: `filter ${blurSpeed}ms ease` }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <div className="glow-border flex items-center gap-2.5 px-4 py-3 rounded-2xl"
-          style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}>
-          <div className="flex-shrink-0">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--muted)' }}>
-              <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" stroke="currentColor" strokeWidth="1.5"/>
-              <path d="M8 13s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              <circle cx="9" cy="9.5" r="1" fill="currentColor"/><circle cx="15" cy="9.5" r="1" fill="currentColor"/>
-            </svg>
-          </div>
+          style={{ background: 'rgba(24,28,36,0.95)', backdropFilter: 'blur(16px)' }}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); const fs = Array.from(e.dataTransfer.files || []); if (fs.length) handlePickFiles(fs) }}>
+          <AttachButton uploading={uploading} onPick={handlePickFiles} />
           <textarea ref={inputRef} value={input}
             onChange={(e) => {
               setInput(e.target.value)
@@ -1489,9 +1721,9 @@ export default function Chat() {
     const total = Object.values(unread).reduce((a, b) => a + (Number(b) || 0), 0) + (Number(groupUnread) || 0)
     totalUnreadRef.current = total
     if (total > 0) {
-      document.title = `(${total}) Jatry`
+      document.title = `(${total}) 필자닷컴 회의실`
     } else {
-      document.title = 'Jatry'
+      document.title = '필자닷컴 회의실'
     }
   }, [unread, groupUnread])
 
@@ -1530,9 +1762,8 @@ export default function Chat() {
       unsubUsers = onValue(ref(db, 'users'), (snap) => {
         const data = snap.val()
         if (!data) { setUsers([]); setLoadingUsers(false); return }
-        const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
         const list = Object.values(data)
-          .filter((u) => u.username && u.createdDate === todayStr)
+          .filter((u) => u.username)
           .sort((a, b) => {
             if (a.online && !b.online) return -1
             if (!a.online && b.online) return 1
@@ -1558,7 +1789,7 @@ export default function Chat() {
       if (!data) { setMessages([]); return }
       const all = Object.entries(data)
         .map(([id, v]) => ({ id, ...v }))
-        .filter((m) => m.timestamp && isSameDay(m.timestamp))
+        .filter((m) => within7Days(m.timestamp))
         .sort((a, b) => a.timestamp !== b.timestamp ? a.timestamp - b.timestamp : a.id < b.id ? -1 : 1)
       setMessages(all)
       set(ref(db, `rooms/${roomId}/lastRead/${me.uid}`), Date.now())
@@ -1581,7 +1812,7 @@ export default function Chat() {
       if (!data) { setGroupMessages([]); return }
       const all = Object.entries(data)
         .map(([id, v]) => ({ id, ...v }))
-        .filter((m) => m.timestamp && isSameDay(m.timestamp))
+        .filter((m) => within7Days(m.timestamp))
         .sort((a, b) => a.timestamp !== b.timestamp ? a.timestamp - b.timestamp : a.id < b.id ? -1 : 1)
       setGroupMessages(all)
       // 탭이 보이고 있고 그룹챗이 활성일 때만 읽음 처리
@@ -1616,7 +1847,7 @@ export default function Chat() {
       }
       const lastSeen = parseInt(localStorage.getItem('lastSeen___public__') || '0')
       const count = Object.values(data).filter(
-        (m) => m.sender !== me.uid && m.type !== 'system' && m.timestamp > lastSeen && isSameDay(m.timestamp)
+        (m) => m.sender !== me.uid && m.type !== 'system' && m.timestamp > lastSeen && within7Days(m.timestamp)
       ).length
       setGroupUnread((prev) => {
         if (count > (prev || 0)) {
@@ -1650,7 +1881,7 @@ export default function Chat() {
         if (!data) { setUnread((prev) => ({ ...prev, [u.uid]: 0 })); return }
         if (activeUserRef.current?.uid === u.uid) return
         const count = Object.values(data).filter(
-          (m) => m.sender !== me.uid && m.timestamp > myLastRead && isSameDay(m.timestamp)
+          (m) => m.sender !== me.uid && m.timestamp > myLastRead && within7Days(m.timestamp)
         ).length
         // side effect는 state updater 밖에서
         setUnread((prev) => {
@@ -1718,15 +1949,12 @@ export default function Chat() {
     setMessages([])
   }
 
-  // 비공개 그룹 로드
+  // 안건방 로드 — 방 자체는 영구(만료 없음). 방 안의 메시지만 7일 후 정리됨.
   useEffect(() => {
     if (!me) return
-    const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,'')
     const unsub = onValue(ref(db, 'groups'), (snap) => {
       if (!snap.val()) { setPrivateGroups([]); return }
-      const all = Object.entries(snap.val())
-        .filter(([, g]) => g.createdDate === todayStr)
-        .map(([id, g]) => ({ id, ...g }))
+      const all = Object.entries(snap.val()).map(([id, g]) => ({ id, ...g }))
       setPrivateGroups(all)
     })
     return () => unsub()
@@ -1740,7 +1968,7 @@ export default function Chat() {
       if (!data) { setPrivateGroupMessages([]); return }
       const list = Object.entries(data)
         .map(([id, v]) => ({ id, ...v }))
-        .filter(m => m.timestamp && isSameDay(m.timestamp))
+        .filter(m => within7Days(m.timestamp))
         .sort((a, b) => a.timestamp !== b.timestamp ? a.timestamp - b.timestamp : a.id < b.id ? -1 : 1)
       setPrivateGroupMessages(list)
       if (activePrivateGroupRef.current?.id === activePrivateGroup.id) {
@@ -1775,7 +2003,7 @@ export default function Chat() {
     const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,'')
     const newGroup = await push(ref(db, 'groups'), {
       name: name.trim(), code, createdBy: me.uid,
-      createdDate: todayStr, members: { [me.uid]: true }
+      createdAt: Date.now(), members: { [me.uid]: true }
     })
     const joined = JSON.parse(localStorage.getItem('joinedGroups') || '{}')
     joined[newGroup.key] = true

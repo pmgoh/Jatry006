@@ -136,3 +136,7 @@ body::before {
 .send-btn:active {
   transform: scale(0.95);
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

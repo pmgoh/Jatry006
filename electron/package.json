@@ -1,15 +1,16 @@
 {
-  "name": "jatry",
-  "version": "1.2.0",
-  "description": "Jatry 메신저",
+  "name": "pilja-meeting",
+  "version": "2.0.0",
+  "description": "필자닷컴 회의실 — 회의 자료 공유",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win"
   },
   "build": {
-    "appId": "works.pmgoh.jatry",
-    "productName": "Jatry",
+    "appId": "com.pilja.meeting",
+    "productName": "필자닷컴 회의실",
+    "artifactName": "Jatry-Setup.${ext}",
     "directories": {
       "output": "dist"
     },
@@ -26,7 +27,7 @@
       "oneClick": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Jatry"
+      "shortcutName": "필자닷컴 회의실"
     }
   },
   "devDependencies": {

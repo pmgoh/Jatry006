@@ -13,7 +13,7 @@ function createWindow() {
     height: 740,
     minWidth: 800,
     minHeight: 600,
-    title: 'Jatry',
+    title: '필자닷컴 회의실',
     backgroundColor: '#0a0b0f',
     webPreferences: {
       nodeIntegration: false,
@@ -58,11 +58,11 @@ function createTray() {
   }
 
   tray = new Tray(icon)
-  tray.setToolTip('Jatry')
+  tray.setToolTip('필자닷컴 회의실')
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Jatry 열기',
+      label: '회의실 열기',
       click: () => {
         if (mainWindow) {
           mainWindow.show()

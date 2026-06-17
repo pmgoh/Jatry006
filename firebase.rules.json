@@ -14,6 +14,13 @@
         ".read": "auth != null"
       }
     },
+    "boards": {
+      ".read": "auth != null",
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
     "rooms": {
       "__public__": {
         ".read": "auth != null",

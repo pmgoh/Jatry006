@@ -1,4 +1,4 @@
-# Jatry Desktop (Electron)
+# 필자닷컴 회의실 — 데스크톱 앱 (Electron)
 
 Vercel에 배포된 웹앱을 감싸는 Electron 앱.
 업데이트는 Vercel push만 하면 자동 반영됨.
