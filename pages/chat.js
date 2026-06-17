@@ -151,7 +151,7 @@ async function sendFileToRoom(roomId, file, me) {
   })
 }
 
-// 첨부(클립) 버튼 — 파일 선택/드롭을 처리하는 공용 컴포넌트
+// 첨부(파일) 버튼 — 라벨이 보이는 또렷한 버튼
 function AttachButton({ uploading, onPick }) {
   const inputRef = useRef(null)
   return (
@@ -160,19 +160,35 @@ function AttachButton({ uploading, onPick }) {
         onChange={(e) => { const fs = Array.from(e.target.files || []); e.target.value = ''; if (fs.length) onPick(fs) }} />
       <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading}
         title="파일 첨부"
-        className="flex-shrink-0 rounded-xl flex items-center justify-center"
-        style={{ width: 32, height: 32, background: 'transparent', border: 'none', cursor: uploading ? 'default' : 'pointer', color: uploading ? '#7c6af7' : 'var(--muted)' }}
-        onMouseEnter={(e) => { if (!uploading) e.currentTarget.style.color = '#7c6af7' }}
-        onMouseLeave={(e) => { if (!uploading) e.currentTarget.style.color = 'var(--muted)' }}>
+        className="flex-shrink-0"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 44, padding: '0 16px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)', cursor: uploading ? 'default' : 'pointer', color: uploading ? '#9b8df9' : 'var(--text-dim)', fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap' }}
+        onMouseEnter={(e) => { if (!uploading) { e.currentTarget.style.color = '#9b8df9'; e.currentTarget.style.borderColor = 'rgba(124,106,247,0.4)' } }}
+        onMouseLeave={(e) => { if (!uploading) { e.currentTarget.style.color = 'var(--text-dim)'; e.currentTarget.style.borderColor = 'var(--border)' } }}>
         {uploading ? (
-          <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--border)', borderTopColor: '#7c6af7', animation: 'spin 0.8s linear infinite' }} />
+          <div style={{ width: 17, height: 17, borderRadius: '50%', border: '2px solid var(--border)', borderTopColor: '#7c6af7', animation: 'spin 0.8s linear infinite' }} />
         ) : (
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
           </svg>
         )}
+        {uploading ? '올리는 중' : '파일'}
       </button>
     </>
+  )
+}
+
+// 보내기 버튼 — 라벨이 보이는 또렷한 버튼 (공용)
+function SendButton({ onClick, disabled }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      className="send-btn flex-shrink-0"
+      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, height: 44, padding: '0 20px', borderRadius: 12, color: 'white', fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap', opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+        <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
+        <path d="M22 2L15 22 11 13 2 9l20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+      보내기
+    </button>
   )
 }
 
@@ -895,14 +911,7 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
               rows={1} className="flex-1 bg-transparent outline-none resize-none text-base leading-relaxed"
               style={{ color: 'var(--text)', caretColor: '#7c6af7', maxHeight: 120 }}
             />
-            <button onClick={handleSend} disabled={!input.trim() || sending}
-              className="send-btn flex-shrink-0 rounded-xl flex items-center justify-center"
-              style={{ width: 32, height: 32, opacity: input.trim() ? 1 : 0.3, cursor: input.trim() ? 'pointer' : 'not-allowed' }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-                <path d="M22 2L15 22 11 13 2 9l20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
+            <SendButton onClick={handleSend} disabled={!input.trim() || sending} />
           </div>
           <p className="text-center mt-1.5 hidden md:block" style={{ color: 'var(--muted)', fontSize: 11 }}>Enter 전송 · Shift+Enter 줄바꿈</p>
         </div>
@@ -1271,14 +1280,7 @@ function GroupChatPanel({ me, messages, lastGroupRead, groupMarkerTs, onBack, on
               rows={1} className="flex-1 bg-transparent outline-none resize-none text-base leading-relaxed"
               style={{ color: 'var(--text)', caretColor: '#7c6af7', maxHeight: 120 }}
             />
-            <button onClick={handleSend} disabled={!input.trim() || sending}
-              className="send-btn flex-shrink-0 rounded-xl flex items-center justify-center"
-              style={{ width: 32, height: 32, opacity: input.trim() ? 1 : 0.3, cursor: input.trim() ? 'pointer' : 'not-allowed' }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-                <path d="M22 2L15 22 11 13 2 9l20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
+            <SendButton onClick={handleSend} disabled={!input.trim() || sending} />
           </div>
           <p className="text-center mt-1.5 hidden md:block" style={{ color: 'var(--muted)', fontSize: 11 }}>Enter 전송 · Shift+Enter 줄바꿈</p>
         </div>
@@ -1750,14 +1752,7 @@ function ChatPanel({ me, activeUser, messages, lastRead, onBack, onClose, notify
             className="flex-1 bg-transparent outline-none resize-none text-base leading-relaxed"
             style={{ color: 'var(--text)', caretColor: '#7c6af7', maxHeight: 120 }}
           />
-          <button onClick={handleSend} disabled={!input.trim() || sending}
-            className="send-btn flex-shrink-0 rounded-xl flex items-center justify-center"
-            style={{ width: 32, height: 32, opacity: input.trim() ? 1 : 0.3, cursor: input.trim() ? 'pointer' : 'not-allowed' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-              <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-              <path d="M22 2L15 22 11 13 2 9l20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+          <SendButton onClick={handleSend} disabled={!input.trim() || sending} />
         </div>
         <p className="text-center mt-1.5 hidden md:block" style={{ color: 'var(--muted)', fontSize: 11 }}>
           Enter 전송 · Shift+Enter 줄바꿈
@@ -1793,6 +1788,8 @@ function ChatApp({ mode = 'meeting' }) {
   const [privateGroupMessages, setPrivateGroupMessages] = useState([])
   const [privateGroupUnread, setPrivateGroupUnread] = useState({})
   const [showGroupModal, setShowGroupModal] = useState(null) // 'create' | { join: group }
+  const [showNick, setShowNick] = useState(false)   // /dm 진입 시 닉네임 만들기
+  const [nickInput, setNickInput] = useState('')
   const activePrivateGroupRef = useRef(null)
   const [lastRead, setLastRead] = useState({})
   const [lastGroupRead, setLastGroupRead] = useState(0)
@@ -2141,6 +2138,23 @@ function ChatApp({ mode = 'meeting' }) {
     router.push('/')
   }
 
+  // 1:1 대화(/dm)에서는 상대가 알아볼 닉네임이 필요 — 아직 자동 이름(회의실-XXXX)이면 만들게 함
+  useEffect(() => {
+    if (mode === 'dm' && me && (me.displayName || '').startsWith('회의실-')) {
+      setNickInput('')
+      setShowNick(true)
+    }
+  }, [mode, me])
+
+  const saveNickname = async () => {
+    const name = nickInput.trim()
+    if (name.length < 2 || !me) return
+    await updateProfile(auth.currentUser, { displayName: name })
+    await set(ref(db, `users/${me.uid}/username`), name)
+    await set(ref(db, `users/${me.uid}/online`), true)
+    setShowNick(false)
+  }
+
   return (
     <div className="h-screen overflow-hidden" style={{ background: 'var(--night)' }}>
       <div className="hidden md:flex h-full">
@@ -2226,7 +2240,7 @@ function ChatApp({ mode = 'meeting' }) {
         v{APP_VERSION}
       </div>
 
-      {/* 그룹 생성/입장 모달 */}
+      {/* 회의 생성/입장 모달 */}
       {showGroupModal && <GroupModal
         mode={showGroupModal === 'create' ? 'create' : 'join'}
         group={showGroupModal?.join}
@@ -2234,6 +2248,26 @@ function ChatApp({ mode = 'meeting' }) {
         onJoin={handleJoinGroup}
         onClose={() => setShowGroupModal(null)}
       />}
+
+      {/* 1:1 대화 닉네임 만들기 모달 */}
+      {showNick && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 320, padding: 16 }}
+          onClick={(e) => { if (e.target === e.currentTarget) router.push('/chat') }}>
+          <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: 28, width: 380, maxWidth: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
+            <p style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>닉네임 만들기</p>
+            <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 20 }}>1:1 대화에서 상대가 알아볼 이름을 정하세요.</p>
+            <input value={nickInput} onChange={(e) => setNickInput(e.target.value)}
+              placeholder="예: 홍길동 / 영업팀 김부장" autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') saveNickname() }}
+              style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', fontSize: 17, color: 'var(--text)', outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => router.push('/chat')} style={{ flex: 1, padding: '14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-dim)', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>회의로</button>
+              <button onClick={saveNickname} disabled={nickInput.trim().length < 2}
+                style={{ flex: 2, padding: '14px', borderRadius: 12, background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', border: 'none', color: 'white', fontSize: 16, fontWeight: 700, cursor: 'pointer', opacity: nickInput.trim().length < 2 ? 0.5 : 1 }}>시작하기</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 닉네임 변경 알림 */}
       {renameNotice && (
