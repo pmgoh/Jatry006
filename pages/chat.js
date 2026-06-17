@@ -378,7 +378,7 @@ function MyMessageBubble({ msg, isFirst, isLast, otherLastRead }) {
   )
 }
 
-function ProfileArea({ meUser, onLogout, onRenameNotify }) {
+function ProfileArea({ meUser, onLogout, onRenameNotify, mode = 'meeting', onWithdraw }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
@@ -448,7 +448,15 @@ function ProfileArea({ meUser, onLogout, onRenameNotify }) {
           </button>
         )}
       </div>
-      <button onClick={onLogout} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--muted)' }}
+      {mode === 'dm' && onWithdraw && (
+        <button onClick={onWithdraw} title="탈퇴"
+          style={{ flexShrink: 0, padding: '7px 11px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-dim)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = 'rgba(248,113,113,0.4)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-dim)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+          탈퇴
+        </button>
+      )}
+      <button onClick={onLogout} title="나가기" className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--muted)' }}
         onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.background = 'rgba(248,113,113,0.08)' }}
         onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -459,7 +467,7 @@ function ProfileArea({ meUser, onLogout, onRenameNotify }) {
   )
 }
 
-function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers, activeGroup, onSelectGroup, groupUnread, onClose, onRenameNotify, privateGroups, activePrivateGroup, onSelectPrivateGroup, privateGroupUnread, mode = 'meeting' }) {
+function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadingUsers, activeGroup, onSelectGroup, groupUnread, onClose, onRenameNotify, privateGroups, activePrivateGroup, onSelectPrivateGroup, privateGroupUnread, onWithdraw, mode = 'meeting' }) {
   const otherUsers = users.filter((u) => u.uid !== me?.uid)
   const meUser = users.find((u) => u.uid === me?.uid)
 
@@ -654,7 +662,7 @@ function Sidebar({ me, users, activeUser, unread, onSelectUser, onLogout, loadin
       </>)}
 
       {meUser
-        ? <ProfileArea meUser={meUser} onLogout={onLogout} onRenameNotify={onRenameNotify} />
+        ? <ProfileArea meUser={meUser} onLogout={onLogout} onRenameNotify={onRenameNotify} mode={mode} onWithdraw={onWithdraw} />
         : <div className="flex items-center gap-2.5 px-3 py-3 flex-shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
             <div className="flex-1 min-w-0">
               <p className="text-xs" style={{ color: 'var(--muted)' }}>이전 버전 계정</p>
@@ -1790,6 +1798,7 @@ function ChatApp({ mode = 'meeting' }) {
   const [showGroupModal, setShowGroupModal] = useState(null) // 'create' | { join: group }
   const [showNick, setShowNick] = useState(false)   // /dm 진입 시 닉네임 만들기
   const [nickInput, setNickInput] = useState('')
+  const [showWithdraw, setShowWithdraw] = useState(false)  // /dm 탈퇴 확인
   const activePrivateGroupRef = useRef(null)
   const [lastRead, setLastRead] = useState({})
   const [lastGroupRead, setLastGroupRead] = useState(0)
@@ -2155,6 +2164,26 @@ function ChatApp({ mode = 'meeting' }) {
     setShowNick(false)
   }
 
+  // 탈퇴 — 내 신원/1:1 기록 제거 + 기기 계정 초기화 후 나가기
+  const handleWithdraw = async () => {
+    if (!me) return
+    const uid = me.uid
+    try {
+      const snap = await get(ref(db, 'rooms'))
+      if (snap.exists()) {
+        for (const roomId of Object.keys(snap.val())) {
+          if (roomId !== '__public__' && roomId.includes(uid)) {
+            await remove(ref(db, `rooms/${roomId}`)).catch(() => {})
+          }
+        }
+      }
+    } catch {}
+    await remove(ref(db, `users/${uid}`)).catch(() => {})
+    try { localStorage.removeItem('roomAuth') } catch {}
+    await signOut(auth)
+    router.push('/')
+  }
+
   return (
     <div className="h-screen overflow-hidden" style={{ background: 'var(--night)' }}>
       <div className="hidden md:flex h-full">
@@ -2182,7 +2211,7 @@ function ChatApp({ mode = 'meeting' }) {
             activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread}
             onClose={() => setSidebarOpen(false)} onRenameNotify={handleRenameNotify}
             privateGroups={privateGroups} activePrivateGroup={activePrivateGroup}
-            onSelectPrivateGroup={handleSelectPrivateGroup} privateGroupUnread={privateGroupUnread} mode={mode} />
+            onSelectPrivateGroup={handleSelectPrivateGroup} privateGroupUnread={privateGroupUnread} onWithdraw={() => setShowWithdraw(true)} mode={mode} />
         </div>
         {activePrivateGroup
           ? <PrivateGroupPanel me={me} group={activePrivateGroup} messages={privateGroupMessages} onClose={handleCloseChat} />
@@ -2209,7 +2238,7 @@ function ChatApp({ mode = 'meeting' }) {
               onSelectUser={handleSelectUser} onLogout={handleLogout} loadingUsers={loadingUsers}
               activeGroup={activeGroup} onSelectGroup={handleSelectGroup} groupUnread={groupUnread} onRenameNotify={handleRenameNotify}
               privateGroups={privateGroups} activePrivateGroup={activePrivateGroup}
-              onSelectPrivateGroup={handleSelectPrivateGroup} privateGroupUnread={privateGroupUnread} mode={mode} />
+              onSelectPrivateGroup={handleSelectPrivateGroup} privateGroupUnread={privateGroupUnread} onWithdraw={() => setShowWithdraw(true)} mode={mode} />
           : activePrivateGroup
             ? <PrivateGroupPanel me={me} group={activePrivateGroup} messages={privateGroupMessages}
                 onBack={() => { setMobileView('list'); setActivePrivateGroup(null) }} />
@@ -2264,6 +2293,23 @@ function ChatApp({ mode = 'meeting' }) {
               <button onClick={() => router.push('/chat')} style={{ flex: 1, padding: '14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-dim)', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>회의로</button>
               <button onClick={saveNickname} disabled={nickInput.trim().length < 2}
                 style={{ flex: 2, padding: '14px', borderRadius: 12, background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', border: 'none', color: 'white', fontSize: 16, fontWeight: 700, cursor: 'pointer', opacity: nickInput.trim().length < 2 ? 0.5 : 1 }}>시작하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 탈퇴 확인 모달 */}
+      {showWithdraw && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 320, padding: 16 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowWithdraw(false) }}>
+          <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: 28, width: 380, maxWidth: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
+            <p style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>탈퇴</p>
+            <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 22 }}>
+              내 닉네임과 1:1 대화 기록이 모두 사라지고 목록에서 빠집니다. 계속할까요?
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowWithdraw(false)} style={{ flex: 1, padding: '14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-dim)', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>취소</button>
+              <button onClick={handleWithdraw} style={{ flex: 1, padding: '14px', borderRadius: 12, background: '#f04444', border: 'none', color: 'white', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>탈퇴하기</button>
             </div>
           </div>
         </div>
