@@ -6,71 +6,59 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
 } from 'firebase/auth'
-import { ref, set, get } from 'firebase/database'
+import { ref, set } from 'firebase/database'
 
-const APP_VERSION = '1.2'
-const PIN_CODE = '0542'
+const APP_VERSION = '2.0'
 
-// 닉네임 → 고정 이메일 (날짜 없음 — 영구 계정)
-function fakeEmail(username) {
-  const safe = Array.from(username).map(c => c.charCodeAt(0)).join('')
-  return `u${safe}@msng.app`
+// 회의실 PC 단위 자동 계정 — 개인 구분 없이, 기기별로 식별만.
+// 한번 만든 계정은 localStorage에 저장해 재방문 시 그대로 재사용.
+function rand6() {
+  return Math.random().toString(36).slice(2, 8)
 }
 
 export default function AuthPage() {
   const router = useRouter()
-  const [username, setUsername] = useState('')
-  const [pin, setPin] = useState('')
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError(''); setSuccess('')
-
-    if (!username.trim()) return setError('닉네임을 입력해주세요.')
-    if (username.trim().length < 2) return setError('닉네임은 2자 이상이어야 해요.')
-    if (pin !== PIN_CODE) return setError('핀코드가 올바르지 않아요.')
-
+  const enterRoom = async () => {
+    setError('')
     setLoading(true)
-    const email = fakeEmail(username.trim())
-
     try {
-      // 기존 계정 로그인 시도
-      const cred = await signInWithEmailAndPassword(auth, email, PIN_CODE)
-      await set(ref(db, `users/${cred.user.uid}/online`), true)
-      setSuccess('입장!')
-      setTimeout(() => router.push('/chat'), 400)
-    } catch (loginErr) {
-      if (loginErr.code === 'auth/user-not-found' || loginErr.code === 'auth/invalid-credential') {
-        // 새 계정 자동 생성
-        try {
-          const cred = await createUserWithEmailAndPassword(auth, email, PIN_CODE)
-          await updateProfile(cred.user, { displayName: username.trim() })
-          await set(ref(db, `users/${cred.user.uid}`), {
-            uid: cred.user.uid,
-            username: username.trim(),
-            online: true,
-            createdAt: Date.now(),
-          })
-          setSuccess('입장!')
-          setTimeout(() => router.push('/chat'), 400)
-        } catch (signupErr) {
-          if (signupErr.code === 'auth/network-request-failed') {
-            setError('네트워크 오류가 발생했어요.')
-          } else {
-            setError(`오류가 발생했어요. (${signupErr.code})`)
-          }
-        }
-      } else if (loginErr.code === 'auth/network-request-failed') {
-        setError('네트워크 오류가 발생했어요.')
-      } else if (loginErr.code === 'auth/too-many-requests') {
-        setError('잠시 후 다시 시도해주세요.')
+      let stored = null
+      try { stored = JSON.parse(localStorage.getItem('roomAuth') || 'null') } catch {}
+
+      if (stored && stored.email && stored.pw) {
+        // 이 기기의 기존 계정으로 재입장
+        const cred = await signInWithEmailAndPassword(auth, stored.email, stored.pw)
+        await set(ref(db, `users/${cred.user.uid}/online`), true)
       } else {
-        setError(`오류가 발생했어요. (${loginErr.code})`)
+        // 이 기기의 새 계정 자동 생성
+        const r = rand6()
+        const email = `room_${r}@msng.app`
+        const pw = `room_${r}`
+        let cred
+        try {
+          cred = await createUserWithEmailAndPassword(auth, email, pw)
+        } catch (e) {
+          if (e.code === 'auth/email-already-in-use') {
+            cred = await signInWithEmailAndPassword(auth, email, pw)
+          } else { throw e }
+        }
+        const name = `회의실-${r.slice(0, 4).toUpperCase()}`
+        await updateProfile(cred.user, { displayName: name })
+        await set(ref(db, `users/${cred.user.uid}`), {
+          uid: cred.user.uid,
+          username: name,
+          online: true,
+          createdAt: Date.now(),
+        })
+        localStorage.setItem('roomAuth', JSON.stringify({ email, pw }))
       }
-    } finally {
+      router.push('/chat')
+    } catch (e) {
+      if (e.code === 'auth/network-request-failed') setError('네트워크 오류가 발생했어요.')
+      else setError(`입장 중 오류가 발생했어요. (${e.code || e.message})`)
       setLoading(false)
     }
   }
@@ -96,18 +84,18 @@ export default function AuthPage() {
             <h1 className="text-3xl font-semibold leading-snug" style={{ color: 'var(--text)' }}>필자닷컴<br />회의실</h1>
             <div className="mt-5 h-px w-10" style={{ background: 'linear-gradient(90deg, #7c6af7, transparent)' }} />
             <p className="text-sm mt-4 leading-relaxed" style={{ color: 'var(--text-dim)' }}>
-              회의 안건별로 자료를<br />빠르게 공유하는 사내 채널
+              회의별로 자료를 모아두고<br />어느 PC에서든 미리 올려두는 공간
             </p>
             <div className="mt-6 flex items-center gap-2">
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 6px rgba(74,222,128,0.6)' }} />
-              <p className="text-xs" style={{ color: 'var(--text-dim)' }}>핀코드로 입장 · 7일 후 자동 정리</p>
+              <p className="text-xs" style={{ color: 'var(--text-dim)' }}>버튼만 눌러 입장 · 자료는 게시판에 영구 보관</p>
             </div>
           </div>
 
           <p className="text-xs relative z-10" style={{ color: 'var(--muted)' }}>필자닷컴 회의실</p>
         </div>
 
-        {/* 우측 폼 */}
+        {/* 우측 입장 */}
         <div className="flex-1 flex items-center justify-center px-6">
           <div className="w-full max-w-sm">
             <div className="flex items-center gap-2 mb-8 lg:hidden">
@@ -119,40 +107,15 @@ export default function AuthPage() {
             </div>
 
             <h2 className="text-xl font-semibold mb-1" style={{ color: 'var(--text)' }}>입장하기</h2>
-            <p className="text-sm mb-8" style={{ color: 'var(--text-dim)' }}>닉네임과 핀코드를 입력하세요</p>
+            <p className="text-sm mb-8" style={{ color: 'var(--text-dim)' }}>버튼을 누르면 바로 입장해요</p>
 
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text-dim)' }}>닉네임</label>
-                <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-                  placeholder="사용할 닉네임" required autoComplete="username"
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all duration-200"
-                  style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }}
-                  onFocus={(e) => { e.target.style.borderColor = 'rgba(124,106,247,0.6)'; e.target.style.boxShadow = '0 0 0 3px rgba(124,106,247,0.12)' }}
-                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none' }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text-dim)' }}>핀코드</label>
-                <input type="password" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="4자리 핀코드" required autoComplete="current-password"
-                  inputMode="numeric" maxLength={4}
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all duration-200"
-                  style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)', letterSpacing: '0.3em' }}
-                  onFocus={(e) => { e.target.style.borderColor = 'rgba(124,106,247,0.6)'; e.target.style.boxShadow = '0 0 0 3px rgba(124,106,247,0.12)' }}
-                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none' }}
-                />
-              </div>
+            {error && <p className="text-xs px-3 py-2 rounded-lg mb-3" style={{ color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>{error}</p>}
 
-              {error && <p className="text-xs px-3 py-2 rounded-lg" style={{ color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>{error}</p>}
-              {success && <p className="text-xs px-3 py-2 rounded-lg" style={{ color: '#4ade80', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}>{success}</p>}
-
-              <button type="submit" disabled={loading}
-                className="btn-primary w-full py-3 rounded-xl text-sm font-medium relative z-10"
-                style={{ opacity: loading ? 0.7 : 1 }}>
-                <span className="relative z-10">{loading ? '입장 중...' : '입장하기'}</span>
-              </button>
-            </form>
+            <button type="button" onClick={enterRoom} disabled={loading}
+              className="btn-primary w-full py-3 rounded-xl text-sm font-medium relative z-10"
+              style={{ opacity: loading ? 0.7 : 1 }}>
+              <span className="relative z-10">{loading ? '입장 중...' : '입장하기'}</span>
+            </button>
           </div>
         </div>
       </div>
