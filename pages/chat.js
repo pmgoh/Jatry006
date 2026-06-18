@@ -243,6 +243,20 @@ function formatDateTime(ts) {
   return `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`
 }
 
+// 게시판 날짜 구분선용
+function dateKey(ts) {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+function dateDividerLabel(ts) {
+  const d = new Date(ts), now = new Date()
+  const same = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  const yest = new Date(now); yest.setDate(now.getDate() - 1)
+  if (same(d, now)) return '오늘'
+  if (same(d, yest)) return '어제'
+  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`
+}
+
 // 메시지 옆 게시판 저장(북마크) 버튼 — 부모에 className="group" 필요
 function PinButton({ saved, onClick }) {
   return (
@@ -949,9 +963,22 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
                 <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>중요한 파일·링크·메시지를 게시판에 저장해 보세요</p>
               </div>
             ) : (
-              boardItems.map(item => (
-                <BoardItemView key={item.id} item={item} onRemove={() => removeFromBoard(item.id)} />
-              ))
+              boardItems.map((item, idx) => {
+                const prev = boardItems[idx - 1]
+                const showDivider = !prev || dateKey(prev.savedAt) !== dateKey(item.savedAt)
+                return (
+                  <div key={item.id}>
+                    {showDivider && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: idx === 0 ? '0 0 12px' : '18px 0 12px' }}>
+                        <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{dateDividerLabel(item.savedAt)}</span>
+                        <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                      </div>
+                    )}
+                    <BoardItemView item={item} onRemove={() => removeFromBoard(item.id)} />
+                  </div>
+                )
+              })
             )}
           </div>
         </div>
