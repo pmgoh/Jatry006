@@ -6,7 +6,7 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
 } from 'firebase/auth'
-import { ref, set } from 'firebase/database'
+import { ref, set, update } from 'firebase/database'
 
 const APP_VERSION = '2.0'
 
@@ -29,9 +29,13 @@ export default function AuthPage() {
       try { stored = JSON.parse(localStorage.getItem('roomAuth') || 'null') } catch {}
 
       if (stored && stored.email && stored.pw) {
-        // 이 기기의 기존 계정으로 재입장
+        // 이 기기의 기존 계정으로 재입장 — user 노드(닉네임 포함) 항상 보장
+        // (데이터 초기화 후에도 복구되어 '이전 버전 계정' 표시 방지)
         const cred = await signInWithEmailAndPassword(auth, stored.email, stored.pw)
-        await set(ref(db, `users/${cred.user.uid}/online`), true)
+        const m = (stored.email.match(/room_(\w+)@/) || [])[1] || '0000'
+        const name = cred.user.displayName || `회의실-${m.slice(0, 4).toUpperCase()}`
+        if (!cred.user.displayName) await updateProfile(cred.user, { displayName: name })
+        await update(ref(db, `users/${cred.user.uid}`), { uid: cred.user.uid, username: name, online: true })
       } else {
         // 이 기기의 새 계정 자동 생성
         const r = rand6()
