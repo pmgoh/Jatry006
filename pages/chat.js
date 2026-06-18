@@ -108,6 +108,15 @@ function within7Days(ts) {
   return !!ts && (Date.now() - ts) < WEEK_MS
 }
 
+// 저장 안 된 항목의 자동 삭제까지 남은 일수 라벨
+function deleteLabel(ts) {
+  if (!ts) return ''
+  const ms = (ts + WEEK_MS) - Date.now()
+  if (ms <= 0) return '곧 삭제'
+  const d = Math.ceil(ms / 86400000)
+  return d <= 1 ? '내일 삭제' : `${d}일 후 삭제`
+}
+
 // 메시지 본문 내 URL을 클릭 가능한 링크로 변환
 const URL_RE = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi
 function Linkify({ text }) {
@@ -879,6 +888,7 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
               const saved = boardItems.some(it => it.srcMsgId && it.srcMsgId === msg.id)
               if (isMe) return (
                 <div key={msg.id} style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: isFirst ? 28 : 6 }}>
+                  {!saved && <span style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{deleteLabel(msg.timestamp)}</span>}
                   <PinButton saved={saved} onClick={() => toggleBoard(msg)} />
                   <div style={{ maxWidth: '64%' }}>
                     <div style={{ padding: '11px 16px', borderRadius: isLast ? '16px 16px 4px 16px' : '16px', background: 'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(79,163,247,0.16))', border: '1px solid rgba(124,106,247,0.25)', fontSize: 16, lineHeight: 1.6, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}><MessageContent msg={msg} /></div>
@@ -891,6 +901,7 @@ function PrivateGroupPanel({ me, group, messages, onBack, onClose, liveUsers }) 
                   {isFirst && <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><Avatar name={msg.senderName || '?'} size={26} /><span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{msg.senderName}</span></div>}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ flex: 1, paddingLeft: 36, fontSize: 16, lineHeight: 1.7, color: 'var(--text)', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}><MessageContent msg={msg} /></div>
+                    {!saved && <span style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{deleteLabel(msg.timestamp)}</span>}
                     <PinButton saved={saved} onClick={() => toggleBoard(msg)} />
                   </div>
                   {isLast && <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8, paddingLeft: 36 }}>{formatTime(msg.timestamp)}</p>}
