@@ -1844,6 +1844,11 @@ function ChatApp({ mode = 'meeting' }) {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) { router.push('/'); return }
       setMe(user)
+      // user 노드(닉네임) 자가복구 — 데이터 초기화 등으로 비어 있어도 '이전 버전 계정' 안 뜨게
+      if (user.displayName) {
+        set(ref(db, `users/${user.uid}/uid`), user.uid)
+        set(ref(db, `users/${user.uid}/username`), user.displayName)
+      }
       // 백그라운드에서 어제 데이터 정리 (비동기, UI 블로킹 없음)
       cleanupOldData(db, user.uid)
       const onlineRef = ref(db, `users/${user.uid}/online`)
