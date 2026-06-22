@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { auth, db } from '../lib/firebase'
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth'
 import { ref, onValue, set, push, onDisconnect, remove, get } from 'firebase/database'
-import { uploadFile, deleteFile, MAX_UPLOAD_BYTES } from '../lib/storage'
+import { uploadFile, deleteFile, MAX_UPLOAD_BYTES, fileDownloadUrl, fileViewUrl } from '../lib/storage'
 
 const APP_VERSION = '1.2'
 
@@ -201,33 +201,58 @@ function SendButton({ onClick, disabled }) {
   )
 }
 
-// 첨부 파일 렌더링 — 이미지는 미리보기, 그 외는 다운로드 카드
+// 첨부 파일 렌더링 — 이미지 미리보기 + 모든 파일에 또렷한 다운로드 버튼(원본 파일명 유지)
+function DownloadBtn({ href }) {
+  return (
+    <a href={href} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', color: 'white', fontSize: 14, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      다운로드
+    </a>
+  )
+}
+function PreviewBtn({ href }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-dim)', fontSize: 14, fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+      미리보기
+    </a>
+  )
+}
 function FileAttachment({ msg }) {
-  const isImage = (msg.contentType || '').startsWith('image/')
+  const ct = msg.contentType || ''
+  const isImage = ct.startsWith('image/')
+  const isText = ct.startsWith('text/')
+  const dlUrl = msg.fileKey ? fileDownloadUrl(msg.fileKey, msg.fileName) : msg.fileUrl
+  const viewUrl = msg.fileKey ? fileViewUrl(msg.fileKey, msg.fileName) : msg.fileUrl
   if (isImage) {
     return (
-      <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
-        <img src={msg.fileUrl} alt={msg.fileName || '이미지'}
-          style={{ maxWidth: 'min(280px, 100%)', maxHeight: 280, borderRadius: 10, display: 'block', border: '1px solid var(--border)' }} />
-        <span style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', marginTop: 4, wordBreak: 'break-all' }}>
-          {msg.fileName} {msg.fileSize ? `· ${formatBytes(msg.fileSize)}` : ''}
-        </span>
-      </a>
+      <div>
+        <a href={viewUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
+          <img src={msg.fileUrl} alt={msg.fileName || '이미지'}
+            style={{ maxWidth: 'min(280px, 100%)', maxHeight: 280, borderRadius: 10, display: 'block', border: '1px solid var(--border)' }} />
+        </a>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-dim)', wordBreak: 'break-all', flex: 1 }}>{msg.fileName} {msg.fileSize ? `· ${formatBytes(msg.fileSize)}` : ''}</span>
+          <DownloadBtn href={dlUrl} />
+        </div>
+      </div>
     )
   }
   return (
-    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" download
-      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', textDecoration: 'none', minWidth: 200, maxWidth: 320 }}>
-      <div style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9b8df9" strokeWidth="2">
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" />
-        </svg>
+    <div style={{ padding: '12px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', minWidth: 220, maxWidth: 360 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <div style={{ width: 38, height: 38, borderRadius: 9, flexShrink: 0, background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9b8df9" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /></svg>
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p style={{ fontSize: 14, color: 'var(--text)', fontWeight: 600, margin: 0, wordBreak: 'break-all' }}>{msg.fileName || '파일'}</p>
+          <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>{formatBytes(msg.fileSize)}</p>
+        </div>
       </div>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <p style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{msg.fileName || '파일'}</p>
-        <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0 }}>{formatBytes(msg.fileSize)} · 다운로드</p>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {isText && <PreviewBtn href={viewUrl} />}
+        <DownloadBtn href={dlUrl} />
       </div>
-    </a>
+    </div>
   )
 }
 
@@ -1837,6 +1862,8 @@ function ChatApp({ mode = 'meeting' }) {
   const [showNick, setShowNick] = useState(false)   // /dm 진입 시 닉네임 만들기
   const [nickInput, setNickInput] = useState('')
   const [showWithdraw, setShowWithdraw] = useState(false)  // /dm 탈퇴 확인
+  const [updateReady, setUpdateReady] = useState(false)    // 새 버전 배포 감지
+  const verBaseline = useRef(null)
   const activePrivateGroupRef = useRef(null)
   const [lastRead, setLastRead] = useState({})
   const [lastGroupRead, setLastGroupRead] = useState(0)
@@ -2190,6 +2217,22 @@ function ChatApp({ mode = 'meeting' }) {
     router.push('/')
   }
 
+  // 새 버전 배포 감지 → 열어둔 탭 자동 동기화(새로고침). 옛 번들로 멈춰 있는 문제 해결.
+  useEffect(() => {
+    const unsub = onValue(ref(db, 'config/version'), (snap) => {
+      const v = snap.val()
+      if (v == null) return
+      if (verBaseline.current === null) { verBaseline.current = v; return }
+      if (v !== verBaseline.current) setUpdateReady(true)
+    })
+    return () => unsub()
+  }, [])
+  useEffect(() => {
+    if (!updateReady) return
+    const t = setTimeout(() => window.location.reload(), 4000)
+    return () => clearTimeout(t)
+  }, [updateReady])
+
   // 1:1 대화(/dm)에서는 상대가 알아볼 닉네임이 필요 — 아직 자동 이름(회의실-XXXX)이면 만들게 함
   useEffect(() => {
     if (mode === 'dm' && me && (me.displayName || '').startsWith('회의실-')) {
@@ -2229,6 +2272,15 @@ function ChatApp({ mode = 'meeting' }) {
 
   return (
     <div className="h-screen overflow-hidden" style={{ background: 'var(--night)' }}>
+      {updateReady && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '10px 16px', background: 'linear-gradient(135deg, #7c6af7, #4fa3f7)', color: 'white', fontSize: 14, fontWeight: 600, boxShadow: '0 2px 12px rgba(0,0,0,0.3)' }}>
+          <span>새 버전이 있어요 — 잠시 후 자동으로 새로고침됩니다</span>
+          <button onClick={() => window.location.reload()}
+            style={{ padding: '6px 14px', borderRadius: 9, background: 'rgba(255,255,255,0.25)', border: '1px solid rgba(255,255,255,0.5)', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            지금 새로고침
+          </button>
+        </div>
+      )}
       <div className="hidden md:flex h-full">
         {/* 사이드바 토글 버튼 — 닫혔을때만 표시 */}
         {!sidebarOpen && (

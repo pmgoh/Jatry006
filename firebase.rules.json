@@ -21,6 +21,9 @@
         ".write": "auth != null"
       }
     },
+    "config": {
+      ".read": "auth != null"
+    },
     "rooms": {
       "__public__": {
         ".read": "auth != null",
